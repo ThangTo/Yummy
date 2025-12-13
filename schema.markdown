@@ -17,7 +17,7 @@ Collection này lưu trữ các thông tin cố định và quan trọng (Metada
 | `_id`               | ObjectId            | ✅                  | ID mặc định của MongoDB.                                                                                 |
 | `name_key`          | String              | ✅                  | **Key nội bộ** (Phải trùng khớp với kết quả dự đoán của AI) (ví dụ: `Pho_Bo`).                           |
 | `name_vi`           | String              | ✅                  | Tên tiếng Việt hiển thị trên App.                                                                        |
-| `region_key`        | String              | ✅                  | Vùng miền (ví dụ: `Bac_Bo`, `Mien_Tay`). [cite_start]**Cần thiết cho Bản đồ sương mù**[cite: 7].         |
+| `province_name`     | String              | ✅                  | Tên tỉnh/thành phố (ví dụ: `Hà Nội`, `Thành phố Hồ Chí Minh`). [cite_start]**Cần thiết cho Bản đồ sương mù**[cite: 7]. |
 | `location_coords`   | Object              |                     | [cite_start]Tọa độ đại diện của khu vực (dùng cho `react-native-maps`)[cite: 50].                        |
 | `how_to_eat`        | String              |                     | [cite_start]Hướng dẫn cách ăn chuẩn bản địa[cite: 24, 25].                                               |
 | `genai_prompt_seed` | String              |                     | [cite_start]Prompt cơ bản (gợi ý văn phong, chủ đề) để gửi đến Gemini sinh nội dung kể chuyện[cite: 20]. |
@@ -35,7 +35,7 @@ Collection này lưu trữ dữ liệu cá nhân và tiến trình **Gamificatio
 | &nbsp; `-> food_id`      | ObjectId            | ✅                  | Tham chiếu đến ID món ăn trong Collection `foods`.                                |
 | &nbsp; `-> checkin_date` | Date                | ✅                  | Ngày và giờ người dùng check-in.                                                  |
 | &nbsp; `-> image_url`    | String              |                     | Link ảnh gốc đã chụp (để xem lại lịch sử).                                        |
-| `unlocked_regions`       | Array of Strings    |                     | [cite_start]Danh sách các `region_key` đã được mở khóa trên Bản đồ[cite: 27, 28]. |
+| `unlocked_provinces`     | Array of Strings    |                     | [cite_start]Danh sách các `province_name` đã được mở khóa trên Bản đồ[cite: 27, 28]. |
 
 ### 3. 🤖 Collection: `ai_logs` (Lịch sử Xử lý AI)
 
