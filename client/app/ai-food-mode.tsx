@@ -2,7 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { Camera, CameraView, type CameraViewRef } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  ImageBackground,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const bg =
@@ -12,6 +20,10 @@ export default function AIFoodModeScreen() {
   const router = useRouter();
   const cameraRef = useRef<CameraViewRef | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [flashAnimation] = useState(new Animated.Value(0));
+  const [captureScale] = useState(new Animated.Value(1));
 
   useEffect(() => {
     (async () => {
@@ -28,20 +40,69 @@ export default function AIFoodModeScreen() {
     }
   };
 
+  const toggleMute = () => {
+    setIsMuted((prev) => !prev);
+    // TODO: Implement actual mute functionality if needed
+  };
+
   const takePicture = async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current || isCapturing) return;
+
+    setIsCapturing(true);
+
+    // Animation: Scale down button
+    Animated.sequence([
+      Animated.timing(captureScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(captureScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Flash effect
+    Animated.sequence([
+      Animated.timing(flashAnimation, {
+        toValue: 1,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnimation, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     try {
       const data = await cameraRef.current.takePicture({
-        quality: 0.7,
+        quality: 0.8,
         base64: true,
-        skipProcessing: true,
+        skipProcessing: false,
       });
+
       console.log('Ảnh đã chụp:', data?.uri);
       // TODO: Gửi ảnh lên backend / điều hướng kết quả
-      alert('Đã chụp xong! Ảnh tạm lưu ở: ' + data?.uri);
+      // Tạm thời chỉ log, sẽ implement gửi request sau
     } catch (err) {
       console.warn('Chụp ảnh lỗi', err);
+    } finally {
+      setIsCapturing(false);
     }
+  };
+
+  const openGallery = () => {
+    // TODO: Implement gallery picker
+    console.log('Open gallery');
+  };
+
+  const viewAchievements = () => {
+    // TODO: Navigate to achievements screen
+    console.log('View achievements');
   };
 
   if (hasPermission === null) {
@@ -75,17 +136,42 @@ export default function AIFoodModeScreen() {
           }}
         />
         <View style={styles.topBar}>
-          <TouchableOpacity style={styles.iconButton} onPress={goBack}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={goBack}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={styles.modeTag}>
             <Ionicons name="sparkles" size={16} color="#fff" />
             <Text style={styles.modeText}>AI FOOD MODE</Text>
           </View>
-          <TouchableOpacity style={styles.iconButton} onPress={goBack}>
-            <Ionicons name="volume-mute" size={22} color="#fff" />
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={toggleMute}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={isMuted ? 'volume-mute' : 'volume-high'}
+              size={22}
+              color="#fff"
+            />
           </TouchableOpacity>
         </View>
+
+        {/* Flash overlay */}
+        <Animated.View
+          style={[
+            styles.flashOverlay,
+            {
+              opacity: flashAnimation,
+            },
+          ]}
+          pointerEvents="none"
+        />
 
         <View style={styles.frame}>
           <View style={styles.corner} />
@@ -106,13 +192,44 @@ export default function AIFoodModeScreen() {
         </View>
 
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.circleButton}>
+          <TouchableOpacity
+            style={styles.circleButton}
+            onPress={openGallery}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="images" size={22} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <View style={styles.captureInner} />
+
+          <TouchableOpacity
+            style={styles.captureButtonContainer}
+            onPress={takePicture}
+            activeOpacity={0.9}
+            disabled={isCapturing}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
+            <Animated.View
+              style={[
+                styles.captureButton,
+                {
+                  transform: [{ scale: captureScale }],
+                },
+              ]}
+            >
+              {isCapturing ? (
+                <ActivityIndicator size="small" color="#f13b3c" />
+              ) : (
+                <View style={styles.captureInner} />
+              )}
+            </Animated.View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.circleButton}>
+
+          <TouchableOpacity
+            style={styles.circleButton}
+            onPress={viewAchievements}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="trophy" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -254,6 +371,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
+  captureButtonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   captureButton: {
     width: 82,
     height: 82,
@@ -263,12 +384,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 6,
     borderColor: '#1b0f0f',
+    shadowColor: '#f13b3c',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   captureInner: {
     width: 64,
     height: 64,
     borderRadius: 32,
     backgroundColor: '#efefef',
+  },
+  flashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
   },
   nav: {
     paddingBottom: 18,
