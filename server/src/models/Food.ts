@@ -3,7 +3,7 @@ import { Schema, model, type Document } from 'mongoose';
 export interface IFood extends Document {
   name_key: string;
   name_vi: string;
-  region_key: string;
+  province_name: string; // Tên tỉnh/thành phố (ví dụ: "Hà Nội", "Thành phố Hồ Chí Minh")
   location_coords?: { lat: number; lng: number };
   how_to_eat?: string;
   genai_prompt_seed?: string;
@@ -13,7 +13,7 @@ const FoodSchema = new Schema<IFood>(
   {
     name_key: { type: String, required: true, unique: true },
     name_vi: { type: String, required: true },
-    region_key: { type: String, required: true, index: true },
+    province_name: { type: String, required: true, index: true }, // Index để query theo tỉnh
     location_coords: {
       lat: Number,
       lng: Number,

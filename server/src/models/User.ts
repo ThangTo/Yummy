@@ -10,7 +10,7 @@ export interface IUser extends Document {
   email: string;
   current_rank: string;
   food_passport: IUserPassport[];
-  unlocked_regions: string[];
+  unlocked_provinces: string[]; // Danh sách tên tỉnh đã unlock (ví dụ: ["Hà Nội", "Thành phố Hồ Chí Minh"])
 }
 
 const PassportSchema = new Schema<IUserPassport>(
@@ -27,7 +27,7 @@ const UserSchema = new Schema<IUser>(
     email: { type: String, required: true, unique: true },
     current_rank: { type: String, required: true, default: 'Khách vãng lai' },
     food_passport: { type: [PassportSchema], default: [] },
-    unlocked_regions: { type: [String], default: [] },
+    unlocked_provinces: { type: [String], default: [] }, // Danh sách tên tỉnh đã unlock
   },
   { timestamps: true },
 );
