@@ -1,50 +1,69 @@
-# Welcome to your Expo app 👋
+# Yummy App - Hành trình Vị giác Việt
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Full-stack application với Mobile Client (Expo) và Backend Server (Node.js + MongoDB).
 
-## Get started
+## 📁 Cấu trúc Project
 
-1. Install dependencies
+```
+Yummy/
+├── client/          # Mobile App (Expo/React Native)
+│   ├── app/        # Expo Router screens
+│   ├── components/ # React components
+│   ├── assets/     # Images, fonts, etc.
+│   └── ...
+├── server/         # Backend API (Node.js + Express + MongoDB)
+│   ├── src/
+│   │   ├── models/    # Mongoose models
+│   │   ├── routes/    # API routes
+│   │   └── config/    # Database config
+│   └── ...
+└── package.json    # Root scripts
+```
 
+## 🚀 Cài đặt
+
+### Cài đặt tất cả dependencies:
+```bash
+npm run install:all
+```
+
+Hoặc cài từng phần:
    ```bash
+# Client
+cd client
+npm install
+
+# Server
+cd server
    npm install
    ```
 
-2. Start the app
+## 💻 Chạy Development
 
+### Client (Mobile App):
    ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+npm run client:start      # Expo dev server
+npm run client:android    # Android
+npm run client:ios        # iOS
+npm run client:web        # Web
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Server (Backend API):
+```bash
+npm run server:dev        # Development mode với nodemon
+npm run server:start      # Production mode
+```
 
-## Learn more
+## ⚙️ Cấu hình
 
-To learn more about developing your project with Expo, look at the following resources:
+### Server Environment Variables
+Tạo file `server/.env`:
+```
+MONGO_URI=mongodb://localhost:27017/yummy
+PORT=4000
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 📚 Tài liệu
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [ML App Specification](./ML_app.markdown)
+- [Database Schema](./schema.markdown)

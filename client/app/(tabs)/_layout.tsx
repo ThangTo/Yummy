@@ -15,7 +15,8 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
@@ -26,8 +27,31 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Hộ chiếu',
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="map.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="ai-council"
+        options={{
+          title: 'Hội đồng AI',
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="person.3.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="culture-card"
+        options={{
+          title: 'Thẻ văn hóa',
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="book.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Hồ sơ',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name="person.crop.circle" color={color} />
+          ),
         }}
       />
     </Tabs>
