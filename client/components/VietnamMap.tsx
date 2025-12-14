@@ -21,15 +21,29 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
   const mapRef = useRef<MapView>(null);
   const [provinces, setProvinces] = useState<ProvinceFeature[]>([]);
 
-  // Load GeoJSON data khi component mount
+  // Load GeoJSON data khi component mount - với loading state
   useEffect(() => {
-    loadProvincesGeoJSON()
-      .then((data) => {
-        setProvinces(data);
-      })
-      .catch((error) => {
+    let isMounted = true;
+
+    // Delay loading để không block initial render
+    const loadData = async () => {
+      try {
+        const data = await loadProvincesGeoJSON();
+        if (isMounted) {
+          setProvinces(data);
+        }
+      } catch (error) {
         console.error('Failed to load provinces:', error);
-      });
+      }
+    };
+
+    // Load sau một chút để UI render trước
+    const timer = setTimeout(loadData, 100);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   // Lấy Google Maps API key từ config

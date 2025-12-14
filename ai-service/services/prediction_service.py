@@ -139,14 +139,17 @@ class PredictionService:
         vote_counts = Counter()
         confidence_sum = {}
         
+        print("📊 Voting - Predictions từ các models:")
         for model_name, result in predictions.items():
             prediction = result.get("prediction", "Unknown")
             confidence = result.get("confidence", 0.0)
             
             # Bỏ qua nếu có lỗi
             if "error" in result:
+                print(f"  ❌ {model_name}: Error - {result.get('error', 'Unknown error')}")
                 continue
             
+            print(f"  ✅ {model_name}: {prediction} (confidence: {confidence:.4f})")
             vote_counts[prediction] += 1
             if prediction not in confidence_sum:
                 confidence_sum[prediction] = 0.0
@@ -161,7 +164,40 @@ class PredictionService:
                 "total_models": len(predictions),
             }
         
-        best_prediction = vote_counts.most_common(1)[0][0]
+        # Lấy prediction có nhiều vote nhất
+        most_common = vote_counts.most_common()
+        max_votes = most_common[0][1]  # Số vote cao nhất
+        
+        print(f"\n📊 Voting - Vote counts: {dict(vote_counts)}")
+        print(f"📊 Voting - Confidence sums: {confidence_sum}")
+        print(f"📊 Voting - Max votes: {max_votes}")
+        
+        # Nếu có nhiều predictions cùng số vote (tie), chọn cái có confidence cao nhất
+        tied_predictions = [pred for pred, votes in most_common if votes == max_votes]
+        
+        if len(tied_predictions) == 1:
+            # Chỉ có 1 prediction có nhiều vote nhất
+            best_prediction = tied_predictions[0]
+            print(f"✅ Voting - Chọn {best_prediction} (có {max_votes} votes, duy nhất)")
+        else:
+            # Có tie - chọn prediction có confidence cao nhất
+            print(f"⚠️  Voting - Có tie! {len(tied_predictions)} predictions cùng {max_votes} votes")
+            print(f"   Tied predictions: {tied_predictions}")
+            
+            # Tính average confidence cho mỗi tied prediction
+            tied_with_confidence = [
+                (pred, confidence_sum.get(pred, 0.0) / vote_counts[pred])
+                for pred in tied_predictions
+            ]
+            print(f"   Average confidences: {dict(tied_with_confidence)}")
+            
+            best_prediction = max(
+                tied_predictions,
+                key=lambda p: confidence_sum.get(p, 0.0) / vote_counts[p]  # Average confidence
+            )
+            best_avg_conf = confidence_sum[best_prediction] / vote_counts[best_prediction]
+            print(f"✅ Voting - Chọn {best_prediction} (average confidence cao nhất: {best_avg_conf:.4f})")
+        
         num_votes = vote_counts[best_prediction]
         avg_confidence = confidence_sum[best_prediction] / num_votes
         

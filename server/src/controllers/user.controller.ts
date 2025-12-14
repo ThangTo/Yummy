@@ -1,17 +1,15 @@
 import { Request, Response } from 'express';
 import { UserService } from '../services/user.service';
 
-const userService = new UserService();
-
-export class UserController {
+export const UserController = {
   /**
    * GET /api/users/:id/passport
    * Lấy thông tin passport của user (đồng bộ với frontend)
    */
-  async getUserPassport(req: Request, res: Response): Promise<void> {
+  getUserPassport: async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const passport = await userService.getUserPassport(id);
+      const passport = await UserService.getUserPassport(id);
       if (!passport) {
         res.status(404).json({ error: 'User not found' });
         return;
@@ -29,13 +27,13 @@ export class UserController {
       console.error('Error in getUserPassport:', err);
       res.status(500).json({ error: 'Failed to fetch passport' });
     }
-  }
+  },
 
   /**
    * POST /api/users/:id/checkin
    * Check-in món ăn và tự động unlock tỉnh
    */
-  async checkIn(req: Request, res: Response): Promise<void> {
+  checkIn: async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const { food_id, image_url, province_name } = req.body;
@@ -45,7 +43,7 @@ export class UserController {
         return;
       }
 
-      await userService.checkIn(id, {
+      await UserService.checkIn(id, {
         food_id,
         image_url,
         province_name,
@@ -60,6 +58,6 @@ export class UserController {
       }
       res.status(400).json({ error: err.message || 'Failed to check-in' });
     }
-  }
-}
+  },
+};
 

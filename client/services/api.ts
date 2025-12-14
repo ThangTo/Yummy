@@ -45,11 +45,11 @@ export interface ScanResponse {
 }
 
 export interface UserPassport {
-  food_passport: Array<{
+  food_passport: {
     food_id: string;
     checkin_date: string;
     image_url?: string;
-  }>;
+  }[];
   unlocked_provinces: string[];
   current_rank: string;
 }
@@ -72,40 +72,80 @@ class ApiService {
 
   /**
    * Scan ảnh món ăn
+   * @param imageUri - URI của ảnh (từ camera hoặc file system)
+   * @param userId - ID của user (optional)
    */
   async scanFood(imageUri: string, userId?: string): Promise<ScanResponse> {
     try {
-      // Tạo FormData
+      console.log('📸 scanFood - Image URI:', imageUri);
+
+      // Tạo FormData cho React Native
       const formData = new FormData();
-      
-      // Convert image URI to blob/file
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      
+
+      // Trong React Native, FormData cần format đặc biệt
+      // Lấy filename từ URI hoặc dùng tên mặc định
+      const filename = imageUri.split('/').pop() || 'food.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+      console.log('📸 scanFood - Filename:', filename, 'Type:', type);
+
+      // Format đúng cho React Native FormData
+      // Trên iOS, URI từ image picker có thể là ph:// hoặc assets-library://
+      // Cần đảm bảo URI có thể đọc được
+      let finalUri = imageUri;
+
+      // Nếu là iOS ph:// URI, cần convert (nhưng expo-image-picker thường trả về file://)
+      if (imageUri.startsWith('ph://') || imageUri.startsWith('assets-library://')) {
+        console.warn('⚠️ Unsupported URI format, may need conversion:', imageUri);
+        // expo-image-picker với allowsEditing: false thường trả về file:// URI
+        // Nếu vẫn là ph://, có thể cần dùng expo-file-system để copy
+      }
+
       formData.append('file', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'food.jpg',
+        uri: finalUri,
+        type: type,
+        name: filename,
       } as any);
-      
+
       if (userId) {
         formData.append('user_id', userId);
       }
 
+      console.log('📸 scanFood - Sending request to:', `${this.baseUrl}/scan`);
+
+      // Không set Content-Type header, để React Native tự động set multipart/form-data với boundary
       const res = await fetch(`${this.baseUrl}/scan`, {
         method: 'POST',
         body: formData as any,
         headers: {
-          'Content-Type': 'multipart/form-data',
+          Accept: 'application/json',
         },
       });
 
       if (!res.ok) {
-        throw new Error(`Scan failed: ${res.statusText}`);
+        const errorText = await res.text();
+        let errorMessage = `Scan failed: ${res.statusText}`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          // Hiển thị thông tin chi tiết hơn nếu có
+          if (errorJson.error === 'Food not found in database') {
+            errorMessage = `Không tìm thấy món ăn "${
+              errorJson.ai_prediction
+            }" trong database.\n\nĐộ tin cậy: ${Math.round(
+              (errorJson.confidence || 0) * 100,
+            )}%\n\n${errorJson.suggestion || 'Vui lòng thử lại với ảnh khác.'}`;
+          } else {
+            errorMessage = errorJson.message || errorJson.error || errorMessage;
+          }
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       return res.json();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error scanning food:', error);
       throw error;
     }
@@ -134,7 +174,7 @@ class ApiService {
     userId: string,
     foodId: string,
     imageUrl?: string,
-    provinceName?: string
+    provinceName?: string,
   ): Promise<{ ok: boolean }> {
     try {
       const res = await fetch(`${this.baseUrl}/users/${userId}/checkin`, {
@@ -168,7 +208,7 @@ class ApiService {
       const url = provinceName
         ? `${this.baseUrl}/foods?province_name=${encodeURIComponent(provinceName)}`
         : `${this.baseUrl}/foods`;
-      
+
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Failed to get foods: ${res.statusText}`);
@@ -188,9 +228,9 @@ class ApiService {
     province_name: string;
     story: string;
     how_to_eat?: string;
-    pronunciation?: string;
     food_id: string;
     name_key: string;
+    image?: string;
   }> {
     try {
       const res = await fetch(`${this.baseUrl}/culture/${foodId}`);
@@ -226,8 +266,7 @@ class ApiService {
 
     return Object.entries(aiCouncil.model_details).map(([key, detail]) => {
       const confidence = detail.confidence || 0;
-      const bestConfidence = aiCouncil.confidence || 0;
-      
+
       // Xác định state dựa trên confidence
       let state: 'ok' | 'warn' | 'error' = 'ok';
       if (confidence < 0.5) {
@@ -253,4 +292,3 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
-

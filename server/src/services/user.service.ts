@@ -32,18 +32,35 @@ export interface CheckInData {
   province_name?: string;
 }
 
-export class UserService {
+// Helper functions
+const isRecentCheckIn = (checkinDate: Date): boolean => {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  return new Date(checkinDate) > sevenDaysAgo;
+};
+
+const calculateNextRank = (foodCount: number): { name: string; target: number } => {
+  if (foodCount < 5) {
+    return { name: 'Khách vãng lai', target: 5 };
+  } else if (foodCount < 50) {
+    return { name: 'Vua Ẩm Thực Việt', target: 50 };
+  } else {
+    return { name: 'Đã đạt cấp tối đa', target: foodCount };
+  }
+};
+
+export const UserService = {
   /**
    * Lấy thông tin passport của user (food passport + unlocked provinces)
    */
-  async getUserPassport(userId: string): Promise<UserPassportResponse | null> {
+  getUserPassport: async (userId: string): Promise<UserPassportResponse | null> => {
     const user = await User.findById(userId).lean();
     if (!user) return null;
 
     const foodCount = user.food_passport.length;
     
     // Tính next rank và progress
-    const nextRank = this.calculateNextRank(foodCount);
+    const nextRank = calculateNextRank(foodCount);
     const progress = {
       current: foodCount,
       next_rank: nextRank,
@@ -62,7 +79,7 @@ export class UserService {
           location: food?.province_name || '',
           province_name: food?.province_name || '',
           image: item.image_url || 'https://via.placeholder.com/400',
-          tag: this.isRecentCheckIn(item.checkin_date) ? 'Mới mở khóa' : undefined,
+          tag: isRecentCheckIn(item.checkin_date) ? 'Mới mở khóa' : undefined,
         };
       });
 
@@ -79,34 +96,12 @@ export class UserService {
       progress,
       recent_foods: recentFoods,
     };
-  }
-
-  /**
-   * Kiểm tra xem check-in có phải là gần đây không (7 ngày)
-   */
-  private isRecentCheckIn(checkinDate: Date): boolean {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    return new Date(checkinDate) > sevenDaysAgo;
-  }
-
-  /**
-   * Tính next rank dựa trên số món đã ăn
-   */
-  private calculateNextRank(foodCount: number): { name: string; target: number } {
-    if (foodCount < 5) {
-      return { name: 'Khách vãng lai', target: 5 };
-    } else if (foodCount < 50) {
-      return { name: 'Vua Ẩm Thực Việt', target: 50 };
-    } else {
-      return { name: 'Đã đạt cấp tối đa', target: foodCount };
-    }
-  }
+  },
 
   /**
    * Check-in món ăn và tự động unlock tỉnh nếu chưa unlock
    */
-  async checkIn(userId: string, checkInData: CheckInData): Promise<IUser> {
+  checkIn: async (userId: string, checkInData: CheckInData): Promise<IUser> => {
     const user = await User.findById(userId);
     if (!user) {
       throw new Error('User not found');
@@ -129,27 +124,27 @@ export class UserService {
 
     await user.save();
     return user;
-  }
+  },
 
   /**
    * Lấy user theo ID
    */
-  async getUserById(userId: string): Promise<IUser | null> {
+  getUserById: async (userId: string): Promise<IUser | null> => {
     return User.findById(userId).lean();
-  }
+  },
 
   /**
    * Tạo user mới
    */
-  async createUser(userData: Partial<IUser>): Promise<IUser> {
+  createUser: async (userData: Partial<IUser>): Promise<IUser> => {
     return User.create(userData);
-  }
+  },
 
   /**
    * Cập nhật rank của user
    */
-  async updateUserRank(userId: string, newRank: string): Promise<IUser | null> {
+  updateUserRank: async (userId: string, newRank: string): Promise<IUser | null> => {
     return User.findByIdAndUpdate(userId, { current_rank: newRank }, { new: true }).lean();
-  }
-}
+  },
+};
 

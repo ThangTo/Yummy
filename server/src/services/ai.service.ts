@@ -1,6 +1,5 @@
-import FormData from 'form-data';
 import axios, { AxiosInstance } from 'axios';
-import { Readable } from 'stream';
+import FormData from 'form-data';
 
 export interface AIPredictionResponse {
   best_match: string;
@@ -19,30 +18,33 @@ export interface AIPredictionResponse {
   };
 }
 
-export class AIService {
-  private client: AxiosInstance;
-  private aiServiceUrl: string;
+// Tạo axios client instance
+const getAIClient = (): AxiosInstance => {
+  const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+  return axios.create({
+    baseURL: aiServiceUrl,
+    timeout: 30000, // 30 seconds timeout
+  });
+};
 
-  constructor() {
-    // URL của FastAPI service
-    this.aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    
-    this.client = axios.create({
-      baseURL: this.aiServiceUrl,
-      timeout: 30000, // 30 seconds timeout
-    });
-  }
-
+export const AIService = {
   /**
    * Gửi ảnh đến AI service để nhận diện món ăn
    * @param imageBuffer Buffer của ảnh
    * @param filename Tên file (optional)
    */
-  async predictFood(
+  predictFood: async (
     imageBuffer: Buffer,
-    filename: string = 'image.jpg'
-  ): Promise<AIPredictionResponse> {
+    filename: string = 'image.jpg',
+  ): Promise<AIPredictionResponse> => {
     try {
+      const client = getAIClient();
+      
+      console.log('📸 AI Service - Preparing to send image:', {
+        bufferSize: imageBuffer.length,
+        filename,
+      });
+
       // Tạo FormData
       const formData = new FormData();
       formData.append('file', imageBuffer, {
@@ -50,41 +52,54 @@ export class AIService {
         contentType: 'image/jpeg',
       });
 
+      const headers = formData.getHeaders();
+      console.log('📸 AI Service - FormData headers:', headers);
+
       // Gửi request đến FastAPI service
-      const response = await this.client.post<AIPredictionResponse>(
+      const response = await client.post<AIPredictionResponse>(
         '/predict',
         formData as any, // FormData type compatibility
         {
-          headers: {
-            ...formData.getHeaders(),
-          },
+          headers,
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
-        }
+        },
       );
+
+      console.log('✅ AI Service - Response received:', {
+        status: response.status,
+        bestMatch: response.data.best_match,
+        confidence: response.data.confidence,
+      });
 
       return response.data;
     } catch (error: any) {
-      console.error('Error calling AI service:', error);
+      console.error('❌ Error calling AI service:', error);
       if (error.response) {
-        console.error('AI service response error:', error.response.data);
+        console.error('❌ AI service response status:', error.response.status);
+        console.error('❌ AI service response data:', error.response.data);
+        console.error('❌ AI service response headers:', error.response.headers);
       }
-      throw new Error(
-        `AI service error: ${error.message || 'Unknown error'}`
-      );
+      if (error.request) {
+        console.error('❌ AI service request error:', error.request);
+      }
+      if (error.code) {
+        console.error('❌ AI service error code:', error.code);
+      }
+      throw new Error(`AI service error: ${error.message || 'Unknown error'}`);
     }
-  }
+  },
 
   /**
    * Health check AI service
    */
-  async healthCheck(): Promise<boolean> {
+  healthCheck: async (): Promise<boolean> => {
     try {
-      const response = await this.client.get('/health');
+      const client = getAIClient();
+      const response = await client.get('/health');
       return response.status === 200;
     } catch (error) {
       return false;
     }
-  }
-}
-
+  },
+};

@@ -95,9 +95,48 @@ async def predict(file: UploadFile = File(...)):
     try:
         # 1. Đọc ảnh từ RAM (không ghi ra đĩa để tối ưu I/O)
         image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes))
         
-        # 2. Chạy 3 models song song (parallel inference)
+        # Verify image bytes không rỗng
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="Empty image file")
+        
+        print(f"📸 Received image - Size: {len(image_bytes)} bytes, Content-Type: {file.content_type}, Filename: {file.filename}")
+        
+        # Kiểm tra magic bytes để verify image format
+        # JPEG: FF D8 FF
+        # PNG: 89 50 4E 47
+        # GIF: 47 49 46 38
+        magic_bytes = image_bytes[:4]
+        is_jpeg = magic_bytes[:3] == b'\xff\xd8\xff'
+        is_png = magic_bytes[:4] == b'\x89PNG'
+        is_gif = magic_bytes[:4] == b'GIF8'
+        
+        if not (is_jpeg or is_png or is_gif):
+            print(f"⚠️ Unknown image format - Magic bytes: {magic_bytes.hex()}")
+            print(f"   First 20 bytes (hex): {image_bytes[:20].hex()}")
+        
+        # Thử mở image với error handling tốt hơn
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            # Verify image format
+            image.verify()
+            # Reset image sau khi verify (verify() đóng image)
+            image = Image.open(io.BytesIO(image_bytes))
+            print(f"✅ Image opened successfully - Format: {image.format}, Size: {image.size}")
+        except Exception as e:
+            print(f"❌ Error opening image: {type(e).__name__}: {e}")
+            print(f"   Magic bytes (hex): {magic_bytes.hex()}")
+            print(f"   First 100 bytes (hex): {image_bytes[:100].hex()}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid image format: {str(e)}"
+            )
+        
+        # 2. Đảm bảo prediction_service có class names
+        if not prediction_service.class_names and model_service.class_names:
+            prediction_service.set_class_names(model_service.class_names)
+        
+        # 3. Chạy 3 models song song (parallel inference)
         # Image sẽ được preprocess riêng cho từng model trong prediction_service
         predictions = await prediction_service.predict_all_models(
             image,  # Truyền PIL Image gốc

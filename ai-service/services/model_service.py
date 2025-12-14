@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from pathlib import Path
 import tensorflow as tf
 import numpy as np
+import json
 
 
 class ModelService:
@@ -21,6 +22,9 @@ class ModelService:
         Load tất cả 3 models vào RAM.
         Models sẽ được giữ trong RAM để tránh cold start.
         """
+        # Load class names từ file nếu có
+        self._load_class_names()
+        
         model_files = {
             "inception_v3": "InceptionV3_models.keras",
             "resnet152_v2": "ResNet152V2_models.keras",
@@ -44,8 +48,9 @@ class ModelService:
                             output_shape = output_shape[0]
                         if output_shape and len(output_shape) > 1:
                             num_classes = output_shape[-1]
-                            # Tạo tên classes mặc định nếu chưa có
+                            # Tạo tên classes mặc định nếu chưa có file class_names.json
                             self.class_names = [f"class_{i}" for i in range(num_classes)]
+                            print(f"⚠️  Using default class names (class_0, class_1, ...)")
                 else:
                     print(f"⚠️  Model file not found: {model_file}")
             except Exception as e:
@@ -53,6 +58,27 @@ class ModelService:
                 import traceback
                 traceback.print_exc()
                 raise
+        
+        # Log class names đã load
+        if self.class_names:
+            print(f"📋 Class names loaded: {len(self.class_names)} classes")
+            print(f"   First 5: {self.class_names[:5]}")
+    
+    def _load_class_names(self):
+        """Load class names từ file class_names.json"""
+        class_names_path = self.models_path / "class_names.json"
+        if class_names_path.exists():
+            try:
+                with open(class_names_path, 'r', encoding='utf-8') as f:
+                    self.class_names = json.load(f)
+                print(f"✅ Loaded {len(self.class_names)} class names from {class_names_path}")
+            except Exception as e:
+                print(f"⚠️  Error loading class_names.json: {e}")
+                self.class_names = []
+        else:
+            print(f"⚠️  class_names.json not found at {class_names_path}")
+            print(f"   Will use default class names (class_0, class_1, ...)")
+            self.class_names = []
     
     def models_loaded(self) -> bool:
         """Kiểm tra xem models đã được load chưa"""

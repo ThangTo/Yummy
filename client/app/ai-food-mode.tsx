@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraView, type CameraViewRef } from 'expo-camera';
+import { Camera, CameraView } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   ImageBackground,
   StyleSheet,
@@ -18,10 +21,11 @@ const bg =
 
 export default function AIFoodModeScreen() {
   const router = useRouter();
-  const cameraRef = useRef<CameraViewRef | null>(null);
+  const cameraRef = useRef<any>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isPickingImage, setIsPickingImage] = useState(false);
   const [flashAnimation] = useState(new Animated.Value(0));
   const [captureScale] = useState(new Animated.Value(1));
 
@@ -46,7 +50,10 @@ export default function AIFoodModeScreen() {
   };
 
   const takePicture = async () => {
-    if (!cameraRef.current || isCapturing) return;
+    if (!cameraRef.current || isCapturing) {
+      console.warn('Camera ref không sẵn sàng hoặc đang chụp');
+      return;
+    }
 
     setIsCapturing(true);
 
@@ -79,25 +86,165 @@ export default function AIFoodModeScreen() {
     ]).start();
 
     try {
-      const data = await cameraRef.current.takePicture({
-        quality: 0.8,
-        base64: true,
+      // Kiểm tra xem ref có method chụp ảnh không
+      if (!cameraRef.current) {
+        throw new Error('Camera ref không tồn tại');
+      }
+
+      // Với CameraView trong expo-camera 17, thử dùng method takePictureAsync
+      // Nếu không có, có thể cần dùng cách khác
+      if (!cameraRef.current) {
+        throw new Error('Camera ref không tồn tại');
+      }
+
+      // Thử gọi takePictureAsync trực tiếp
+      const photo = await (cameraRef.current as any).takePictureAsync({
+        quality: 1.0, // Chất lượng cao nhất để AI dự đoán chính xác
+        base64: false,
         skipProcessing: false,
       });
 
-      console.log('Ảnh đã chụp:', data?.uri);
-      // TODO: Gửi ảnh lên backend / điều hướng kết quả
-      // Tạm thời chỉ log, sẽ implement gửi request sau
-    } catch (err) {
-      console.warn('Chụp ảnh lỗi', err);
+      if (!photo?.uri) {
+        throw new Error('Không thể chụp ảnh - không có URI');
+      }
+
+      console.log('Ảnh đã chụp:', photo.uri);
+
+      // Navigate ngay đến màn hình Hội đồng AI (scan sẽ được thực hiện ở đó)
+      console.log('📸 Navigating to ai-council immediately...');
+      router.push({
+        pathname: '/ai-council',
+        params: {
+          imageUri: photo.uri,
+        },
+      });
+    } catch (err: any) {
+      console.error('Lỗi khi chụp/scan ảnh:', err);
+
+      // Hiển thị thông báo lỗi cho user
+      Alert.alert(
+        'Lỗi',
+        err.message || 'Không thể chụp ảnh hoặc phân tích món ăn. Vui lòng thử lại.',
+        [{ text: 'OK' }],
+      );
     } finally {
       setIsCapturing(false);
     }
   };
 
-  const openGallery = () => {
-    // TODO: Implement gallery picker
-    console.log('Open gallery');
+  const openGallery = async () => {
+    console.log('📸 openGallery called');
+
+    if (isPickingImage || isCapturing) {
+      console.log('⚠️ Already picking or capturing, ignoring');
+      return;
+    }
+
+    try {
+      console.log('📸 Setting isPickingImage to true');
+      setIsPickingImage(true);
+
+      // Request permission để truy cập thư viện ảnh
+      console.log('📸 Requesting media library permissions...');
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('📸 Permission status:', status);
+
+      if (status !== 'granted') {
+        console.log('❌ Permission denied');
+        Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh.', [
+          { text: 'OK' },
+        ]);
+        setIsPickingImage(false);
+        return;
+      }
+
+      // Mở image picker
+      console.log('📸 Launching image library...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false, // Tắt editing để đơn giản hóa
+        quality: 1.0, // Chất lượng cao nhất để AI dự đoán chính xác
+      });
+
+      console.log('📸 Image picker result:', {
+        canceled: result.canceled,
+        assetsCount: result.assets?.length || 0,
+      });
+
+      if (result.canceled) {
+        console.log('📸 User cancelled image picker');
+        setIsPickingImage(false);
+        return;
+      }
+
+      if (!result.assets || result.assets.length === 0) {
+        throw new Error('Không có ảnh được chọn');
+      }
+
+      const selectedImage = result.assets[0];
+      console.log('✅ Ảnh đã chọn:', selectedImage.uri);
+      console.log('📸 Image info:', {
+        uri: selectedImage.uri,
+        width: selectedImage.width,
+        height: selectedImage.height,
+        type: selectedImage.type,
+      });
+
+      // Convert HEIC/HEIF sang JPEG nếu cần
+      let finalImageUri = selectedImage.uri;
+      const uriLower = selectedImage.uri.toLowerCase();
+      const isHeic =
+        uriLower.endsWith('.heic') ||
+        uriLower.endsWith('.heif') ||
+        uriLower.includes('heic') ||
+        uriLower.includes('heif');
+
+      if (isHeic) {
+        console.log('🔄 Converting HEIC to JPEG...');
+        try {
+          const manipulatedImage = await ImageManipulator.manipulateAsync(
+            selectedImage.uri,
+            [], // Không resize, chỉ convert format
+            {
+              compress: 1.0, // Chất lượng cao nhất để AI dự đoán chính xác
+              format: ImageManipulator.SaveFormat.JPEG,
+            },
+          );
+          finalImageUri = manipulatedImage.uri;
+          console.log('✅ Converted to JPEG:', finalImageUri);
+        } catch (convertError: any) {
+          console.error('❌ Error converting HEIC:', convertError);
+          Alert.alert(
+            'Lỗi',
+            'Không thể chuyển đổi ảnh HEIC. Vui lòng chọn ảnh khác (JPEG hoặc PNG).',
+            [{ text: 'OK' }],
+          );
+          setIsPickingImage(false);
+          return;
+        }
+      }
+
+      // Navigate ngay đến màn hình Hội đồng AI (scan sẽ được thực hiện ở đó)
+      console.log('📸 Navigating to ai-council immediately...');
+      router.push({
+        pathname: '/ai-council',
+        params: {
+          imageUri: finalImageUri, // Dùng URI đã convert
+        },
+      });
+    } catch (err: any) {
+      console.error('❌ Lỗi khi chọn/scan ảnh:', err);
+      console.error('❌ Error stack:', err.stack);
+
+      Alert.alert(
+        'Lỗi',
+        err.message || 'Không thể chọn ảnh hoặc phân tích món ăn. Vui lòng thử lại.',
+        [{ text: 'OK' }],
+      );
+    } finally {
+      console.log('📸 Setting isPickingImage to false');
+      setIsPickingImage(false);
+    }
   };
 
   const viewAchievements = () => {
@@ -128,13 +275,7 @@ export default function AIFoodModeScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ImageBackground source={{ uri: bg }} style={styles.bg} imageStyle={{ opacity: 0.35 }}>
-        <CameraView
-          style={styles.camera}
-          facing="back"
-          ref={(ref) => {
-            cameraRef.current = ref as CameraViewRef | null;
-          }}
-        />
+        <CameraView style={styles.camera} facing="back" ref={cameraRef} />
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.iconButton}
@@ -154,11 +295,7 @@ export default function AIFoodModeScreen() {
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons
-              name={isMuted ? 'volume-mute' : 'volume-high'}
-              size={22}
-              color="#fff"
-            />
+            <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={22} color="#fff" />
           </TouchableOpacity>
         </View>
 
@@ -196,9 +333,14 @@ export default function AIFoodModeScreen() {
             style={styles.circleButton}
             onPress={openGallery}
             activeOpacity={0.7}
+            disabled={isPickingImage || isCapturing}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="images" size={22} color="#fff" />
+            {isPickingImage ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="images" size={22} color="#fff" />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity

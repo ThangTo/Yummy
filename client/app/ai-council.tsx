@@ -1,52 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// Đảm bảo đường dẫn import này đúng với cấu trúc dự án của bạn
+import { apiService, type ScanResponse } from '../services/api';
 
 const bg = '#1b0f0f';
 const card = '#261515';
 const textLight = '#f8f2f2';
 const textMuted = '#c5b8b8';
 const primary = '#d11f2f';
-
-const council = [
-  {
-    name: 'ResNet-50',
-    quote: 'Kết cấu sợi phở và lát thịt bò rất rõ ràng.',
-    score: '95%',
-    result: 'Phở Bò',
-    state: 'ok',
-  },
-  {
-    name: 'EfficientNet V2',
-    quote: 'Phát hiện hành tây, nước dùng trong.',
-    score: '92%',
-    result: 'Phở Bò',
-    state: 'ok',
-  },
-  {
-    name: 'Inception V3',
-    quote: 'Màu nước dùng hơi đỏ, có thể là Bún Bò?',
-    score: '45%',
-    result: 'Bún Bò Huế',
-    state: 'warn',
-  },
-  {
-    name: 'Yummy Vision AI',
-    quote: 'Đặc trưng thảo mộc và bánh phở tươi. Chắc chắn 100%.',
-    score: '99%',
-    result: 'Phở Bò Tái',
-    state: 'error',
-  },
-  {
-    name: 'Color Histogram',
-    quote: 'Phở màu tương đồng với dữ liệu Phở.',
-    score: '88%',
-    result: 'Phở Bò',
-    state: 'ok',
-  },
-];
 
 const stateColor = {
   ok: '#d11f2f',
@@ -56,6 +29,98 @@ const stateColor = {
 
 export default function AICouncilScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ scanResult?: string; imageUri?: string }>();
+
+  const [scanData, setScanData] = useState<ScanResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+  // Animation refs
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  const hasScannedRef = useRef(false);
+
+  const performScan = async (uri: string) => {
+    try {
+      if (hasScannedRef.current) {
+        setIsScanning(true);
+        setIsLoading(true);
+      }
+
+      console.log('📸 Starting scan API for:', uri);
+
+      const scanResult = await apiService.scanFood(uri);
+
+      console.log('✅ Scan success');
+      setScanData(scanResult);
+    } catch (error: any) {
+      console.error('❌ Error scanning:', error);
+    } finally {
+      setIsLoading(false);
+      setIsScanning(false);
+    }
+  };
+
+  useEffect(() => {
+    const uri = params.imageUri;
+
+    // Logic: Nếu có ảnh VÀ chưa từng scan lần nào (check theo Ref)
+    if (uri && !hasScannedRef.current) {
+      console.log('🚀 Triggering scan logic for URI:', uri);
+
+      // 1. Đóng chốt ngay lập tức để chặn các lần render thừa thãi sau đó
+      hasScannedRef.current = true;
+
+      // 2. Dùng setTimeout để đẩy việc xử lý ra khỏi luồng render hiện tại
+      // Kỹ thuật này giúp React hoàn tất việc render UI trước khi bắt đầu update state mới
+      // => Khắc phục triệt để lỗi "Maximum update depth exceeded"
+      setTimeout(() => {
+        performScan(uri);
+      }, 100);
+    }
+  }, [params.imageUri]); // Dependency: Chỉ chạy lại khi params.imageUri thay đổi thực sự
+
+  // Hiệu ứng Animation khi đang scan
+  useEffect(() => {
+    if (isScanning) {
+      // Scan line chạy lên xuống
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scanLineAnim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scanLineAnim, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
+
+      // Glow effect nhấp nháy
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
+    } else {
+      scanLineAnim.stopAnimation();
+      glowAnim.stopAnimation();
+    }
+  }, [isScanning]);
+
   const goBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -64,9 +129,37 @@ export default function AICouncilScreen() {
     }
   };
 
+  const handleRetake = () => {
+    // Reset lại trạng thái để nếu quay lại thì scan được tiếp (tùy logic)
+    hasScannedRef.current = false;
+    router.back();
+  };
+
+  const handleViewRecipe = () => {
+    if (scanData?.food?._id) {
+      router.push({
+        pathname: '/culture-card',
+        params: { foodId: scanData.food._id },
+      });
+    }
+  };
+
+  // Convert AI Council response thành format cho UI
+  const councilMembers = scanData ? apiService.convertAICouncilToUI(scanData.ai_council) : [];
+
+  // Tính số model đồng thuận
+  const consensusCount = scanData
+    ? councilMembers.filter((member) => member.result === scanData.ai_council.best_match).length
+    : 0;
+
+  const totalModels = councilMembers.length;
+  const hasImage = !!params.imageUri;
+  const hasData = !!scanData;
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }} style={styles.container}>
+        {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={goBack}>
             <Ionicons name="chevron-back" size={22} color={textLight} />
@@ -75,72 +168,194 @@ export default function AICouncilScreen() {
           <View style={{ width: 22 }} />
         </View>
 
+        {/* Hero Image Section */}
         <View style={styles.hero}>
-          <Image
-            source={{
-              uri: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=500&q=80',
-            }}
-            style={styles.heroImage}
-          />
-          <View style={styles.scanLine} />
-        </View>
-        <View style={styles.debateTag}>
-          <View style={styles.dot} />
-          <Text style={styles.debateText}>ĐANG TRANH LUẬN</Text>
-        </View>
-        <Text style={styles.headline}>Đang phân tích món ăn...</Text>
-        <Text style={styles.subHeadline}>
-          5 mô hình AI đang phân tích hình ảnh của bạn để tìm ra kết quả chính xác nhất.
-        </Text>
+          {hasImage ? (
+            <>
+              <Image source={{ uri: params.imageUri! }} style={styles.heroImage} />
 
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Chi tiết đánh giá</Text>
-          <Text style={styles.sectionLabel}>4/5 Đồng thuận</Text>
+              {/* Glow effect overlay */}
+              {isScanning && (
+                <Animated.View
+                  style={[
+                    styles.glowOverlay,
+                    {
+                      opacity: glowAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.3, 0.6],
+                      }),
+                    },
+                  ]}
+                />
+              )}
+
+              {/* Animated scan line */}
+              {isScanning && (
+                <Animated.View
+                  style={[
+                    styles.scanLine,
+                    {
+                      transform: [
+                        {
+                          translateY: scanLineAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-85, 85], // Di chuyển trong phạm vi ảnh
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              )}
+            </>
+          ) : (
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="image-outline" size={48} color={textMuted} />
+              <Text style={styles.placeholderText}>Chưa có ảnh</Text>
+            </View>
+          )}
         </View>
 
-        {council.map((item) => (
-          <View key={item.name} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.iconCircle, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-                <Ionicons name="aperture" size={18} color={textLight} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                <Text style={styles.cardQuote}>"{item.quote}"</Text>
-              </View>
-              <Text
-                style={[styles.score, { color: stateColor[item.state as keyof typeof stateColor] }]}
-              >
-                {item.score}
+        {/* Loading State */}
+        {(isLoading || isScanning) && (
+          <>
+            <View style={styles.debateTag}>
+              <ActivityIndicator size="small" color={primary} />
+              <Text style={styles.debateText}>ĐANG QUÉT ẢNH</Text>
+            </View>
+            <Text style={styles.headline}>Đang quét và phân tích món ăn...</Text>
+            <Text style={styles.subHeadline}>
+              Nhiều mô hình AI đang phân tích hình ảnh của bạn để tìm ra kết quả chính xác nhất.
+            </Text>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={primary} />
+              <Text style={styles.loadingText}>Vui lòng đợi...</Text>
+            </View>
+          </>
+        )}
+
+        {/* Success State */}
+        {!isLoading && hasData && (
+          <>
+            <View style={styles.debateTag}>
+              <View style={styles.dot} />
+              <Text style={styles.debateText}>HOÀN THÀNH</Text>
+            </View>
+            <Text style={styles.headline}>Đã phân tích: {scanData?.food.name_vi}</Text>
+            <Text style={styles.subHeadline}>
+              Kết quả từ {totalModels} mô hình AI với độ tin cậy{' '}
+              {Math.round((scanData?.ai_council.confidence || 0) * 100)}%
+            </Text>
+          </>
+        )}
+
+        {/* Error / Empty State */}
+        {!isLoading && !hasData && !isScanning && (
+          <>
+            <View style={styles.debateTag}>
+              <Ionicons name="alert-circle-outline" size={14} color={textMuted} />
+              <Text style={styles.debateText}>CHƯA CÓ DỮ LIỆU</Text>
+            </View>
+            <Text style={styles.headline}>Chưa có kết quả phân tích</Text>
+            <Text style={styles.subHeadline}>
+              {hasImage
+                ? 'Không thể phân tích ảnh. Vui lòng thử lại với ảnh khác.'
+                : 'Vui lòng chụp ảnh hoặc chọn ảnh từ thư viện để bắt đầu phân tích.'}
+            </Text>
+          </>
+        )}
+
+        {/* Result Details */}
+        {!isLoading && scanData && (
+          <>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>Chi tiết đánh giá</Text>
+              <Text style={styles.sectionLabel}>
+                {consensusCount}/{totalModels} Đồng thuận
               </Text>
             </View>
-            <View style={styles.resultRow}>
-              <Text style={styles.resultLabel}>Dự đoán:</Text>
-              <Text style={styles.resultText}>{item.result}</Text>
-            </View>
-          </View>
-        ))}
 
-        <View style={styles.finalCard}>
-          <View style={styles.finalLeft}>
-            <View style={styles.finalCheck}>
-              <Ionicons name="checkmark" size={14} color="#fff" />
+            {/* List Council Members */}
+            {councilMembers.map((item) => (
+              <View key={item.name} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconCircle, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                    <Ionicons name="aperture" size={18} color={textLight} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <Text style={styles.cardQuote}>&quot;{item.quote}&quot;</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.score,
+                      { color: stateColor[item.state as keyof typeof stateColor] || stateColor.ok },
+                    ]}
+                  >
+                    {item.score}
+                  </Text>
+                </View>
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Dự đoán:</Text>
+                  <Text style={styles.resultText}>{item.result}</Text>
+                </View>
+              </View>
+            ))}
+
+            {/* Final Result Card */}
+            <View style={styles.finalCard}>
+              <View style={styles.finalLeft}>
+                <View style={styles.finalCheck}>
+                  <Ionicons name="checkmark" size={14} color="#fff" />
+                </View>
+                <View>
+                  <Text style={styles.finalLabel}>KẾT QUẢ THỐNG NHẤT</Text>
+                  <Text style={styles.finalTitle}>{scanData.food.name_vi}</Text>
+                  <Text style={styles.finalConf}>
+                    Độ tin cậy: {Math.round(scanData.ai_council.confidence * 100)}%
+                  </Text>
+                  {scanData.food.province_name && (
+                    <Text style={styles.finalConf}>Tỉnh: {scanData.food.province_name}</Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.finalActions}>
+                <TouchableOpacity style={styles.retake} onPress={handleRetake}>
+                  <Text style={styles.retakeText}>Thử lại</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.recipe} onPress={handleViewRecipe}>
+                  <Text style={styles.recipeText}>Xem chi tiết</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View>
-              <Text style={styles.finalLabel}>KẾT QUẢ THỐNG NHẤT</Text>
-              <Text style={styles.finalTitle}>Phở Bò</Text>
-              <Text style={styles.finalConf}>Độ tin cậy trung bình: 96%</Text>
+          </>
+        )}
+
+        {/* Empty State UI */}
+        {!isLoading && !hasData && !isScanning && (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="image-outline" size={64} color={textMuted} />
             </View>
-          </View>
-          <View style={styles.finalActions}>
-            <TouchableOpacity style={styles.retake}>
-              <Text style={styles.retakeText}>Thử lại</Text>
+            <Text style={styles.emptyTitle}>
+              {hasImage ? 'Không thể phân tích ảnh' : 'Chưa có ảnh được cung cấp'}
+            </Text>
+            <Text style={styles.emptyDescription}>
+              {hasImage
+                ? 'Ảnh có thể bị lỗi hoặc không phù hợp. Vui lòng thử lại với ảnh khác.'
+                : 'Hãy chụp ảnh hoặc chọn ảnh từ thư viện để AI có thể phân tích món ăn.'}
+            </Text>
+            <TouchableOpacity style={styles.retake} onPress={handleRetake}>
+              <Ionicons
+                name="camera-outline"
+                size={18}
+                color={textLight}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.retakeText}>{hasImage ? 'Thử lại' : 'Chụp ảnh'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.recipe}>
-              <Text style={styles.recipeText}>Xem công thức</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -171,13 +386,22 @@ const styles = StyleSheet.create({
   scanLine: {
     position: 'absolute',
     width: '80%',
-    height: 6,
+    height: 4,
     backgroundColor: primary,
-    top: '48%',
+    top: '50%',
     shadowColor: primary,
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  glowOverlay: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: primary,
+    opacity: 0.3,
   },
   debateTag: {
     marginTop: 16,
@@ -266,6 +490,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#332020',
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
   retakeText: { color: textLight, fontWeight: '700' },
   recipe: {
@@ -276,4 +503,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   recipeText: { color: '#fff', fontWeight: '800' },
+  heroPlaceholder: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: '#1a0f0f',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#2d1b1b',
+    borderStyle: 'dashed',
+  },
+  placeholderText: {
+    color: textMuted,
+    fontSize: 12,
+    marginTop: 8,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    marginTop: 32,
+    alignItems: 'center',
+    padding: 32,
+  },
+  loadingText: {
+    color: textMuted,
+    marginTop: 16,
+    fontSize: 14,
+  },
+  emptyContainer: {
+    marginTop: 32,
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1a0f0f',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#2d1b1b',
+  },
+  emptyTitle: {
+    color: textLight,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyDescription: {
+    color: textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+    paddingHorizontal: 20,
+  },
 });

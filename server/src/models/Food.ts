@@ -6,7 +6,8 @@ export interface IFood extends Document {
   province_name: string; // Tên tỉnh/thành phố (ví dụ: "Hà Nội", "Thành phố Hồ Chí Minh")
   location_coords?: { lat: number; lng: number };
   how_to_eat?: string;
-  genai_prompt_seed?: string;
+  story?: string;
+  image?: string; // URL ảnh chuẩn của món ăn
 }
 
 const FoodSchema = new Schema<IFood>(
@@ -19,10 +20,10 @@ const FoodSchema = new Schema<IFood>(
       lng: Number,
     },
     how_to_eat: String,
-    genai_prompt_seed: String,
+    story: String,
+    image: String, // URL ảnh chuẩn của món ăn
   },
   { timestamps: true },
 );
 
 export const Food = model<IFood>('Food', FoodSchema);
-
