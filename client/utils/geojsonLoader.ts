@@ -53,8 +53,8 @@ export const loadProvincesGeoJSON = async (): Promise<ProvinceFeature[]> => {
       setTimeout(() => {
         try {
           console.log('🔄 Loading provinces GeoJSON (32MB)...');
-          const jsonModule = require('../assets/data/vietnam_provinces.json');
-          
+          const jsonModule = require('../assets/data/vn.json');
+
           // Parse và cache
           cachedProvinces = jsonModule as ProvinceFeature[];
           isLoading = false;
@@ -74,6 +74,25 @@ export const loadProvincesGeoJSON = async (): Promise<ProvinceFeature[]> => {
   });
 
   return loadPromise;
+};
+
+/**
+ * Preload GeoJSON data ngay khi app khởi động
+ * Tương tự như ai-service load models khi startup
+ * Hàm này không block và chạy trong background
+ */
+export const preloadProvincesGeoJSON = (): void => {
+  // Nếu đã cache hoặc đang load, không làm gì
+  if (cachedProvinces || isLoading) {
+    return;
+  }
+
+  // Bắt đầu preload trong background
+  console.log('🚀 Preloading provinces GeoJSON data...');
+  loadProvincesGeoJSON().catch((error) => {
+    // Log error nhưng không throw để không crash app
+    console.error('⚠️ Failed to preload provinces data:', error);
+  });
 };
 
 /**

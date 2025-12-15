@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -11,64 +12,90 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../hooks/use-auth';
+import { usePassport } from '../../hooks/use-passport';
+import { apiService, type CommunityActivity, type FoodInfo } from '../../services/api';
 
-const primary = '#d11f2f';
-const bg = '#1b0f0f';
-const card = '#261515';
-const textLight = '#f8f2f2';
-const textMuted = '#c5b8b8';
-
-const suggestionData = [
-  {
-    title: 'Phở Bò Gia Truyền',
-    subtitle: '49 Bát Đàn, Hoàn Kiếm • 1.2km',
-    price: '50.000đ',
-    rating: 4.8,
-    image:
-      'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    title: 'Bánh Mì Chảo',
-    subtitle: 'Nghĩa Tân, Cầu Giấy',
-    price: '35.000đ',
-    rating: 4.6,
-    image:
-      'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    title: 'Bún Bò Huế',
-    subtitle: 'Huế',
-    price: '45.000đ',
-    rating: 4.7,
-    image:
-      'https://images.unsplash.com/photo-1604908177443-00ac5d1e5f7d?auto=format&fit=crop&w=600&q=80',
-  },
-];
-
-const communityFeed = [
-  {
-    user: 'Lan Chi',
-    dish: 'Bún Riêu Cua Ốc',
-    time: '5 phút trước',
-    xp: '+15 XP',
-    desc: 'Nước dùng chua thanh, ốc to giòn sần sật. Quán này nằm trong ngõ...',
-  },
-  {
-    user: 'Tuấn',
-    dish: 'Cơm Tấm Sài Gòn',
-    time: '10 phút trước',
-    xp: '+12 XP',
-    desc: 'Sườn nướng thơm, bì chả đầy đủ, nước mắm pha vừa miệng.',
-  },
-];
+// --- BẢNG MÀU TỐI GIẢN (CẬP NHẬT LẠI) ---
+const bg = '#121212'; // Đen nhám (Màu bạn đã thích trước đó)
+const card = '#1E1E1E'; // Xám đen (Để hợp với nền đen nhám)
+const primary = '#d11f2f'; // Đỏ (Giữ nguyên làm điểm nhấn)
+const textLight = '#FFFFFF';
+const textMuted = '#A0A0A0';
 
 export default function HomeScreen() {
+  const { isLoggedIn, user } = useAuth();
+  const { passport } = usePassport();
+  const [foods, setFoods] = useState<FoodInfo[]>([]);
+  const [isLoadingFoods, setIsLoadingFoods] = useState(false);
+  const [foodsError, setFoodsError] = useState<string | null>(null);
+  const [activities, setActivities] = useState<CommunityActivity[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchFoods = async () => {
+      try {
+        setIsLoadingFoods(true);
+        setFoodsError(null);
+        const res = await apiService.getFoodsByProvince();
+        setFoods(res.slice(0, 10));
+      } catch (error: any) {
+        console.error('Error loading foods for home:', error);
+        setFoodsError(error?.message || 'Không thể tải gợi ý món ăn');
+      } finally {
+        setIsLoadingFoods(false);
+      }
+    };
+
+    const fetchActivities = async () => {
+      try {
+        setIsLoadingActivities(true);
+        setActivitiesError(null);
+        const res = await apiService.getRecentActivities();
+        setActivities(res);
+      } catch (error: any) {
+        console.error('Error loading recent activities:', error);
+        setActivitiesError(error?.message || 'Không thể tải hoạt động cộng đồng');
+      } finally {
+        setIsLoadingActivities(false);
+      }
+    };
+
+    fetchFoods();
+    fetchActivities();
+  }, []);
+
+  const greetingName = isLoggedIn && user?.username ? user.username : 'bạn';
+
+  const triedFoodIds = useMemo(() => {
+    if (!isLoggedIn || !passport?.food_passport) return new Set<string>();
+    return new Set<string>(passport.food_passport.map((f: any) => f.food_id));
+  }, [isLoggedIn, passport?.food_passport]);
+
+  const suggestionFoods = useMemo(() => {
+    if (!foods.length) return [];
+    if (!isLoggedIn || triedFoodIds.size === 0) {
+      return foods.slice(0, 10);
+    }
+    const untried = foods.filter((f) => !triedFoodIds.has(f._id));
+    return untried.slice(0, 10);
+  }, [foods, isLoggedIn, triedFoodIds]);
+
+  const progress = passport?.progress;
+  const nextRank = progress?.next_rank || { name: 'Khách vãng lai', target: 1 };
+  const currentCount = progress?.current ?? 0;
+  const progressPercent =
+    progress && nextRank.target > 0 ? Math.min((currentCount / nextRank.target) * 100, 100) : 0;
+  const remaining = Math.max((nextRank.target || 0) - currentCount, 0);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 120 }}>
+        {/* TOP BAR */}
         <View style={styles.topBar}>
           <View>
-            <Text style={styles.greeting}>Xin chào, Minh Anh!</Text>
+            <Text style={styles.greeting}>Xin chào, {greetingName}!</Text>
             <Text style={styles.question}>
               Hôm nay ăn gì nhỉ? <Text style={{ fontSize: 18 }}>😋</Text>
             </Text>
@@ -79,6 +106,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* SEARCH BAR */}
         <View style={styles.searchBar}>
           <Ionicons name="search" size={18} color={textMuted} />
           <TextInput
@@ -89,6 +117,7 @@ export default function HomeScreen() {
           <Ionicons name="options" size={18} color={textMuted} />
         </View>
 
+        {/* PASSPORT CARD */}
         <View style={styles.passportCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={styles.passportIcon}>
@@ -96,20 +125,42 @@ export default function HomeScreen() {
             </View>
             <View>
               <Text style={styles.passportTitle}>Hộ chiếu Ẩm thực</Text>
-              <Text style={styles.passportSub}>Thành viên Vàng • 1,240 Điểm</Text>
+              <Text style={styles.passportSub}>
+                {isLoggedIn
+                  ? `${
+                      passport?.current_rank || user?.current_rank || 'Khách vãng lai'
+                    } • ${currentCount} món`
+                  : 'Đăng nhập để bắt đầu hành trình ẩm thực'}
+              </Text>
             </View>
-            <View style={styles.levelTag}>
-              <Text style={styles.levelText}>L5</Text>
-            </View>
+            {isLoggedIn && (
+              <View style={styles.levelTag}>
+                <Text style={styles.levelText}>{nextRank.name}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.progressBar}>
-            <View style={styles.progressFill} />
-            <View style={styles.progressSecondary} />
+            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
           </View>
-          <Text style={styles.progressLabel}>Tiến độ thăng hạng 85%</Text>
-          <Text style={styles.passportFoot}>Check-in thêm 2 món để lên Level 6!</Text>
+          {isLoggedIn ? (
+            <>
+              <Text style={styles.progressLabel}>
+                Tiến độ thăng hạng {Math.round(progressPercent)}%
+              </Text>
+              <Text style={styles.passportFoot}>
+                {remaining > 0
+                  ? `Check-in thêm ${remaining} món để đạt “${nextRank.name}”`
+                  : 'Bạn đã đạt danh hiệu cao nhất cho mốc này!'}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.passportFoot}>
+              Đăng nhập và quét món để mở khóa bản đồ ẩm thực Việt Nam.
+            </Text>
+          )}
         </View>
 
+        {/* QUICK ACTIONS */}
         <View style={styles.quickActions}>
           {[
             { label: 'Gợi ý', icon: 'restaurant' },
@@ -126,85 +177,140 @@ export default function HomeScreen() {
           ))}
         </View>
 
+        {/* GỢI Ý MÓN ĂN (Style Dọc Minimalist) */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Gợi ý hôm nay 🔥</Text>
-          <TouchableOpacity>
-            <Text style={styles.sectionLink}>Xem tất cả</Text>
-          </TouchableOpacity>
+          {suggestionFoods.length > 0 && (
+            <TouchableOpacity>
+              <Text style={styles.sectionLink}>Xem thêm</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 14 }}
+          contentContainerStyle={{ gap: 14, paddingLeft: 4 }}
         >
-          {suggestionData.map((item) => (
-            <View key={item.title} style={styles.suggestionCard}>
-              <Image source={{ uri: item.image }} style={styles.suggestionImage} />
-              <View style={styles.suggestionContent}>
-                <Text style={styles.suggestionTitle}>{item.title}</Text>
-                <Text style={styles.suggestionSubtitle}>{item.subtitle}</Text>
-                <View style={styles.suggestionRow}>
-                  <Text style={styles.suggestionPrice}>{item.price}</Text>
-                  <View style={styles.ratingChip}>
-                    <Ionicons name="star" size={12} color="#ffc107" />
-                    <Text style={styles.ratingText}>{item.rating}</Text>
+          {isLoadingFoods && (
+            <View style={[styles.loadingCard]}>
+              <ActivityIndicator color={primary} />
+            </View>
+          )}
+          {foodsError && !isLoadingFoods && (
+            <View style={[styles.loadingCard]}>
+              <Text style={styles.suggestionSubtitle}>{foodsError}</Text>
+            </View>
+          )}
+
+          {!isLoadingFoods &&
+            !foodsError &&
+            suggestionFoods.map((item) => (
+              <TouchableOpacity key={item._id} style={styles.suggestionCard} activeOpacity={0.8}>
+                <Image
+                  source={{
+                    uri:
+                      (item as any).image ||
+                      'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=600&q=80',
+                  }}
+                  style={styles.suggestionImage}
+                />
+                <View style={styles.suggestionContent}>
+                  <Text style={styles.suggestionTitle} numberOfLines={1}>
+                    {item.name_vi}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Ionicons
+                      name="location-sharp"
+                      size={10}
+                      color={textMuted}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                      {item.province_name}
+                    </Text>
                   </View>
                 </View>
+              </TouchableOpacity>
+            ))}
+        </ScrollView>
+
+        {/* CỘNG ĐỒNG KHÁM PHÁ (Style Card Tách Biệt - Không Footer) */}
+        <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+          <Text style={styles.sectionTitle}>Cộng đồng khám phá</Text>
+        </View>
+
+        {isLoadingActivities && (
+          <View style={styles.feedCardItem}>
+            <ActivityIndicator color={primary} />
+            <Text style={[styles.feedDesc, { marginTop: 8, textAlign: 'center' }]}>
+              Đang tải hoạt động...
+            </Text>
+          </View>
+        )}
+
+        {activitiesError && !isLoadingActivities && (
+          <View style={styles.feedCardItem}>
+            <Text style={styles.feedDish}>Lỗi tải dữ liệu</Text>
+            <Text style={styles.feedDesc}>{activitiesError}</Text>
+          </View>
+        )}
+
+        {!isLoadingActivities && !activitiesError && activities.length === 0 && (
+          <View style={styles.feedCardItem}>
+            <Text style={styles.feedDesc}>
+              Chưa có hoạt động nào. Hãy là người đầu tiên check-in!
+            </Text>
+          </View>
+        )}
+
+        {!isLoadingActivities &&
+          !activitiesError &&
+          activities.map((item, index) => (
+            <View key={`${item.user_id}-${index}`} style={styles.feedCardItem}>
+              {/* Header: Avatar + User + Time */}
+              <View style={styles.feedHeader}>
+                <Image
+                  source={{ uri: item.avatar || 'https://via.placeholder.com/50' }}
+                  style={styles.feedAvatar}
+                />
+                <View>
+                  <Text style={styles.feedUser}>{item.username}</Text>
+                  <Text style={styles.feedTime}>Vừa xong • {item.province_name}</Text>
+                </View>
+              </View>
+
+              {/* Body: Text Content */}
+              <View style={styles.feedBody}>
+                <Text style={styles.feedText}>
+                  Đã chinh phục món{' '}
+                  <Text style={{ fontWeight: '700', color: primary }}>{item.food_name}</Text>. Hương
+                  vị đậm đà khó quên! 😋
+                </Text>
               </View>
             </View>
           ))}
-        </ScrollView>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Cộng đồng khám phá</Text>
-          <TouchableOpacity>
-            <Text style={styles.sectionLink}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
-
-        {communityFeed.map((item) => (
-          <View key={item.dish} style={styles.feedCard}>
-            <View style={styles.feedHeader}>
-              <View style={styles.avatar} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.feedUser}>{item.user}</Text>
-                <Text style={styles.feedTime}>vừa khám phá {item.time}</Text>
-              </View>
-              <Text style={styles.xpBadge}>{item.xp}</Text>
-            </View>
-            <Text style={styles.feedDish}>{item.dish}</Text>
-            <Text style={styles.feedDesc}>{item.desc}</Text>
-            <View style={styles.feedActions}>
-              <View style={styles.feedActionItem}>
-                <Ionicons name="heart-outline" size={16} color={textMuted} />
-                <Text style={styles.feedActionText}>24</Text>
-              </View>
-              <View style={styles.feedActionItem}>
-                <Ionicons name="chatbubble-outline" size={16} color={textMuted} />
-                <Text style={styles.feedActionText}>5</Text>
-              </View>
-              <Ionicons name="share-social-outline" size={16} color={textMuted} />
-            </View>
-          </View>
-        ))}
-
+        {/* CHECK-IN CARD */}
         <View style={styles.checkinCard}>
-          <View>
-            <Text style={styles.checkinTitle}>Bạn chưa check-in hôm nay?</Text>
+          <View style={styles.checkinContent}>
+            <View style={styles.checkinHeaderRow}>
+              <Text style={styles.checkinTitle}>Bạn chưa check-in hôm nay?</Text>
+              <Link href="/ai-food-mode" asChild>
+                <TouchableOpacity style={styles.checkinButton}>
+                  <Ionicons name="camera" size={18} color={textLight} />
+                  <Text style={styles.checkinButtonText}>Check-in</Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
             <Text style={styles.checkinSubtitle}>
-              Chụp ảnh món ăn để nhận ngay 50 XP và huy hiệu mới!
+              Chụp ảnh món ăn để chia sẻ trải nghiệm và nhận huy hiệu mới!
             </Text>
           </View>
-          <Link href="/ai-food-mode" asChild>
-            <TouchableOpacity style={styles.checkinButton}>
-              <Ionicons name="camera" size={18} color={textLight} />
-              <Text style={styles.checkinButtonText}>Check-in</Text>
-            </TouchableOpacity>
-          </Link>
         </View>
       </ScrollView>
 
+      {/* FAB */}
       <Link href="/ai-food-mode" asChild>
         <TouchableOpacity style={styles.fab}>
           <Ionicons name="scan" size={24} color={textLight} />
@@ -223,6 +329,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
+  // TopBar
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -259,6 +366,7 @@ const styles = StyleSheet.create({
     top: 6,
     right: 6,
   },
+  // Search
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -267,27 +375,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 10,
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
+    // Bỏ border cho style tối giản sạch sẽ hơn
   },
   searchInput: {
     flex: 1,
     color: textLight,
     fontSize: 14,
   },
+  // Passport
   passportCard: {
-    backgroundColor: '#2b1717',
+    backgroundColor: card, // Sử dụng màu card thống nhất
     borderRadius: 16,
     padding: 16,
     marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#3a1f1f',
+    // Loại bỏ viền nâu đỏ để hợp với nền đen nhám
   },
   passportIcon: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: '#fce2e3',
+    backgroundColor: 'rgba(209, 31, 47, 0.2)', // Tint đỏ nhẹ
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -302,7 +409,7 @@ const styles = StyleSheet.create({
   },
   levelTag: {
     marginLeft: 'auto',
-    backgroundColor: '#4b2c2c',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
@@ -313,20 +420,16 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     marginTop: 14,
-    height: 10,
+    height: 6, // Mỏng hơn cho tinh tế
     borderRadius: 8,
-    backgroundColor: '#3a1f1f',
+    backgroundColor: '#333',
     overflow: 'hidden',
     flexDirection: 'row',
   },
   progressFill: {
     width: '85%',
-    backgroundColor: '#fbc02d',
+    backgroundColor: primary, // Dùng màu primary đỏ
     borderRadius: 8,
-  },
-  progressSecondary: {
-    width: '8%',
-    backgroundColor: '#f55f7a',
   },
   progressLabel: {
     color: textLight,
@@ -338,6 +441,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  // Quick Actions
   quickActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -348,20 +452,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   quickIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+    width: 50, // To hơn chút
+    height: 50,
+    borderRadius: 25, // Tròn hoàn toàn
     backgroundColor: card,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
   },
   quickLabel: {
     color: textLight,
     fontSize: 12,
     fontWeight: '600',
   },
+  // Sections
   sectionHeader: {
     marginTop: 20,
     marginBottom: 12,
@@ -375,87 +478,80 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionLink: {
-    color: '#ff6969',
+    color: primary,
     fontWeight: '600',
   },
+
+  // --- GỢI Ý MÓN ĂN (Style Dọc) ---
   suggestionCard: {
-    backgroundColor: card,
-    width: 220,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
+    width: 140,
+    marginRight: 6,
   },
   suggestionImage: {
-    width: '100%',
-    height: 140,
+    width: 140,
+    height: 180,
+    borderRadius: 16,
+    backgroundColor: '#333',
+    marginBottom: 8,
   },
   suggestionContent: {
-    padding: 12,
-    gap: 6,
+    paddingHorizontal: 2,
   },
   suggestionTitle: {
     color: textLight,
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 14,
   },
   suggestionSubtitle: {
     color: textMuted,
     fontSize: 12,
   },
-  suggestionRow: {
-    flexDirection: 'row',
+  loadingCard: {
+    width: 140,
+    height: 180,
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  suggestionPrice: {
-    color: '#ff6969',
-    fontWeight: '700',
-  },
-  ratingChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#332020',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  ratingText: {
-    color: textLight,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  feedCard: {
+    justifyContent: 'center',
     backgroundColor: card,
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
+    borderRadius: 16,
+  },
+  // ----------------------------------------
+
+  // --- CỘNG ĐỒNG KHÁM PHÁ (Style Card Tách Biệt) ---
+  feedCardItem: {
+    backgroundColor: card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    // Không viền
   },
   feedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    marginBottom: 10,
   },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#3a2626',
+  feedAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: '#333',
   },
   feedUser: {
     color: textLight,
+    fontSize: 15,
     fontWeight: '700',
   },
   feedTime: {
     color: textMuted,
     fontSize: 12,
   },
-  xpBadge: {
-    color: '#4ade80',
-    fontWeight: '700',
+  feedBody: {
+    // Không cần margin nhiều vì đã bỏ footer
+  },
+  feedText: {
+    color: '#e0e0e0',
+    fontSize: 14,
+    lineHeight: 22,
   },
   feedDish: {
     color: textLight,
@@ -466,34 +562,26 @@ const styles = StyleSheet.create({
   feedDesc: {
     color: textMuted,
     fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
   },
-  feedActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginTop: 10,
-  },
-  feedActionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  feedActionText: {
-    color: textMuted,
-    fontSize: 12,
-  },
+  // ----------------------------------------------------
+
+  // Checkin & FAB
   checkinCard: {
     marginTop: 18,
     backgroundColor: card,
     borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+  },
+  checkinContent: {
+    flex: 1,
+  },
+  checkinHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   checkinTitle: {
     color: textLight,
@@ -508,37 +596,15 @@ const styles = StyleSheet.create({
   },
   checkinButton: {
     backgroundColor: primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginLeft: 'auto',
+    gap: 4,
   },
   checkinButtonText: {
     color: textLight,
-    fontWeight: '700',
-  },
-  navRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  navButton: {
-    flex: 1,
-    backgroundColor: '#2f1c1c',
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#3a1f1f',
-  },
-  navButtonText: {
-    color: '#fff',
     fontWeight: '700',
   },
   fab: {
@@ -551,9 +617,9 @@ const styles = StyleSheet.create({
     backgroundColor: primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowColor: primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },

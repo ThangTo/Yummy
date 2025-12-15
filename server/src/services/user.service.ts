@@ -1,5 +1,5 @@
-import { User, IUser } from '../models/User';
 import { Types } from 'mongoose';
+import { IUser, User } from '../models/User';
 
 export interface UserPassportResponse {
   food_passport: Array<{
@@ -9,6 +9,7 @@ export interface UserPassportResponse {
   }>;
   unlocked_provinces: string[];
   current_rank: string;
+  avatar?: string;
   progress: {
     current: number;
     next_rank: {
@@ -26,6 +27,16 @@ export interface UserPassportResponse {
   }>;
 }
 
+export interface RecentActivity {
+  user_id: string;
+  username: string;
+  avatar?: string;
+  food_id: string;
+  food_name: string;
+  province_name: string;
+  checkin_date: string;
+}
+
 export interface CheckInData {
   food_id: string;
   image_url?: string;
@@ -40,13 +51,21 @@ const isRecentCheckIn = (checkinDate: Date): boolean => {
 };
 
 const calculateNextRank = (foodCount: number): { name: string; target: number } => {
-  if (foodCount < 5) {
-    return { name: 'Khách vãng lai', target: 5 };
-  } else if (foodCount < 50) {
-    return { name: 'Vua Ẩm Thực Việt', target: 50 };
-  } else {
-    return { name: 'Đã đạt cấp tối đa', target: foodCount };
-  }
+  if (foodCount < 1) return { name: 'Khách vãng lai', target: 1 };
+  if (foodCount < 5) return { name: 'Nhà săn vị', target: 5 };
+  if (foodCount < 10) return { name: 'Kẻ phiêu lưu', target: 10 };
+  if (foodCount < 20) return { name: 'Xuyên Việt', target: 20 };
+  if (foodCount < 30) return { name: 'Đại sứ ẩm thực', target: 30 };
+  return { name: 'Thần Ăn', target: foodCount };
+};
+
+const resolveRankFromCount = (foodCount: number): string => {
+  if (foodCount >= 30) return 'Đại sứ ẩm thực';
+  if (foodCount >= 20) return 'Xuyên Việt';
+  if (foodCount >= 10) return 'Kẻ phiêu lưu';
+  if (foodCount >= 5) return 'Nhà săn vị';
+  if (foodCount >= 1) return 'Khách vãng lai';
+  return 'Ẩm thực sơ khai';
 };
 
 export const UserService = {
@@ -58,9 +77,10 @@ export const UserService = {
     if (!user) return null;
 
     const foodCount = user.food_passport.length;
-    
+
     // Tính next rank và progress
     const nextRank = calculateNextRank(foodCount);
+    const currentRank = resolveRankFromCount(foodCount);
     const progress = {
       current: foodCount,
       next_rank: nextRank,
@@ -92,7 +112,8 @@ export const UserService = {
         image_url: item.image_url,
       })),
       unlocked_provinces: user.unlocked_provinces,
-      current_rank: user.current_rank,
+      current_rank: currentRank,
+      avatar: user.avatar,
       progress,
       recent_foods: recentFoods,
     };
@@ -115,12 +136,13 @@ export const UserService = {
     });
 
     // Unlock tỉnh nếu chưa unlock
-    if (
-      checkInData.province_name &&
-      !user.unlocked_provinces.includes(checkInData.province_name)
-    ) {
+    if (checkInData.province_name && !user.unlocked_provinces.includes(checkInData.province_name)) {
       user.unlocked_provinces.push(checkInData.province_name);
     }
+
+    // Cập nhật rank dựa trên tổng số món đã check-in
+    const foodCount = user.food_passport.length;
+    user.current_rank = resolveRankFromCount(foodCount);
 
     await user.save();
     return user;
@@ -146,5 +168,52 @@ export const UserService = {
   updateUserRank: async (userId: string, newRank: string): Promise<IUser | null> => {
     return User.findByIdAndUpdate(userId, { current_rank: newRank }, { new: true }).lean();
   },
-};
 
+  /**
+   * Cập nhật avatar (URL)
+   */
+  updateAvatar: async (userId: string, avatarUrl: string): Promise<IUser | null> => {
+    return User.findByIdAndUpdate(userId, { avatar: avatarUrl }, { new: true }).lean();
+  },
+
+  /**
+   * Lấy danh sách hoạt động check-in mới nhất của tất cả user
+   */
+  getRecentActivities: async (limit = 20): Promise<RecentActivity[]> => {
+    const activities = await User.aggregate([
+      { $unwind: '$food_passport' },
+      { $sort: { 'food_passport.checkin_date': -1 } },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'foods',
+          localField: 'food_passport.food_id',
+          foreignField: '_id',
+          as: 'food',
+        },
+      },
+      { $unwind: { path: '$food', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          user_id: '$_id',
+          username: '$username',
+          avatar: '$avatar',
+          food_id: '$food._id',
+          food_name: '$food.name_vi',
+          province_name: '$food.province_name',
+          checkin_date: '$food_passport.checkin_date',
+        },
+      },
+    ]).exec();
+
+    return activities.map((a: any) => ({
+      user_id: a.user_id?.toString() || '',
+      username: a.username || 'Người dùng ẩn danh',
+      avatar: a.avatar,
+      food_id: a.food_id?.toString() || '',
+      food_name: a.food_name || 'Món ăn bí ẩn',
+      province_name: a.province_name || '',
+      checkin_date: new Date(a.checkin_date).toISOString(),
+    }));
+  },
+};

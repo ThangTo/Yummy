@@ -1,8 +1,10 @@
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
+import path from 'path';
 import { connectDB } from './config/db';
 import aiLogsRoute from './routes/ai-logs.routes';
+import authRoute from './routes/auth.routes';
 import cultureRoute from './routes/culture.routes';
 import foodsRoute from './routes/foods.routes';
 import scanRoute from './routes/scan.routes';
@@ -33,6 +35,9 @@ app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'yummy-backend' });
 });
 
+// Serve static files (avatars, etc.)
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
 // QUAN TRỌNG: Mount scan route TRƯỚC express.json()
 // Multer cần raw body để xử lý multipart/form-data
 // express.json() sẽ parse body thành JSON và làm hỏng multipart data
@@ -43,6 +48,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Tất cả API routes khác (sau khi đã parse JSON)
+app.use('/api/auth', authRoute); // Authentication routes (register, login)
 app.use('/api/foods', foodsRoute);
 app.use('/api/users', usersRoute);
 app.use('/api/ai-logs', aiLogsRoute);

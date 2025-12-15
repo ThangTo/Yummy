@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   ScrollView,
   StyleSheet,
@@ -12,11 +13,15 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../hooks/use-auth';
+import { usePassport } from '../hooks/use-passport';
 import { apiService } from '../services/api';
 
+const { width } = Dimensions.get('window');
 const bg = '#1b0f0f';
 const card = '#261515';
 const textLight = '#f8f2f2';
+const textMuted = '#c5b8b8'; // Thêm màu xám nhạt
 const primary = '#d11f2f';
 
 interface CultureCardData {
@@ -35,6 +40,8 @@ export default function CultureCardScreen() {
   const [cultureData, setCultureData] = useState<CultureCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isLoggedIn, user, refreshUser } = useAuth();
+  const { passport, refreshPassport } = usePassport();
 
   useEffect(() => {
     const fetchCultureCard = async () => {
@@ -54,7 +61,6 @@ export default function CultureCardScreen() {
       } catch (err: any) {
         console.error('Error fetching culture card:', err);
         setError(err.message || 'Không thể tải thông tin văn hóa');
-        Alert.alert('Lỗi', 'Không thể tải thông tin văn hóa. Vui lòng thử lại.');
       } finally {
         setIsLoading(false);
       }
@@ -72,16 +78,50 @@ export default function CultureCardScreen() {
   };
 
   const handleListen = () => {
-    // TODO: Implement text-to-speech
     Alert.alert('Tính năng sắp có', 'Tính năng nghe phát âm sẽ sớm được cập nhật.');
   };
 
-  const handleSave = () => {
-    // TODO: Implement save to collection
-    Alert.alert('Tính năng sắp có', 'Tính năng sưu tầm sẽ sớm được cập nhật.');
+  const isCollected = useMemo(() => {
+    if (!cultureData || !passport?.food_passport) return false;
+    return passport.food_passport.some((f) => f.food_id === cultureData.food_id);
+  }, [cultureData, passport?.food_passport]);
+
+  const handleSave = async () => {
+    if (!cultureData) return;
+    if (!isLoggedIn || !user) {
+      Alert.alert('Cần đăng nhập', 'Đăng nhập để sưu tầm và mở khóa hộ chiếu.', [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Đăng nhập',
+          onPress: () => router.push('/login'),
+        },
+      ]);
+      return;
+    }
+
+    if (isCollected) {
+      Alert.alert('Thông báo', 'Bạn đã có thẻ này trong bộ sưu tập.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await apiService.checkIn(
+        user.id,
+        cultureData.food_id,
+        cultureData.image,
+        cultureData.province_name,
+      );
+      await Promise.all([refreshUser(), refreshPassport()]);
+      Alert.alert('Đã sưu tầm', 'Món ăn đã được lưu vào hộ chiếu & mở khóa tỉnh tương ứng.');
+    } catch (err: any) {
+      console.error('Collect error:', err);
+      Alert.alert('Lỗi', err?.message || 'Không thể sưu tầm, vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Helper function để xác định vùng miền từ tên tỉnh
   const getRegionFromProvince = (provinceName: string): string => {
     const northProvinces = [
       'Hà Nội',
@@ -163,26 +203,44 @@ export default function CultureCardScreen() {
     );
   }
 
+  // --- PHẦN THIẾT KẾ LẠI GIAO DIỆN LỖI / KHÔNG TÌM THẤY ---
   if (error || !cultureData) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={goBack}>
-            <Ionicons name="close" size={22} color={textLight} />
+        <View style={styles.headerRowPadding}>
+          <TouchableOpacity onPress={goBack} style={styles.backButtonCircle}>
+            <Ionicons name="arrow-back" size={20} color={textLight} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Thẻ bài văn hóa</Text>
-          <View style={{ width: 22 }} />
         </View>
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={64} color={textLight} />
-          <Text style={styles.errorText}>{error || 'Không tìm thấy thông tin'}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={goBack}>
-            <Text style={styles.retryText}>Quay lại</Text>
+
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.radarContainer}>
+            <View style={[styles.radarCircle, { width: 200, height: 200, opacity: 0.1 }]} />
+            <View style={[styles.radarCircle, { width: 150, height: 150, opacity: 0.2 }]} />
+            <View style={[styles.radarCircle, { width: 100, height: 100, opacity: 0.3 }]} />
+
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="search" size={40} color={primary} />
+            </View>
+          </View>
+
+          <Text style={styles.emptyTitle}>Lạc lối rồi?</Text>
+          <Text style={styles.emptyDesc}>
+            Chúng tôi không tìm thấy thẻ bài văn hóa nào.
+            {'\n'}Có thể đường dẫn bị lỗi hoặc dữ liệu chưa được cập nhật.
+          </Text>
+
+          <TouchableOpacity style={styles.goHomeBtn} onPress={goBack}>
+            <View style={[styles.goHomeGradient, { backgroundColor: primary }]}>
+              <Text style={styles.goHomeText}>Quay về trang chủ</Text>
+              <Ionicons name="home" size={18} color="#fff" />
+            </View>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
+  // -----------------------------------------------------------
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -236,10 +294,18 @@ export default function CultureCardScreen() {
             </>
           )}
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={styles.saveText}>Sưu tầm ngay</Text>
-          </TouchableOpacity>
+          {!isCollected && (
+            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.saveText}>Sưu tầm ngay</Text>
+            </TouchableOpacity>
+          )}
+          {isCollected && (
+            <View style={[styles.saveButton, { backgroundColor: '#2d2d2d' }]}>
+              <Ionicons name="checkmark-done" size={18} color="#9be59b" />
+              <Text style={[styles.saveText, { color: '#9be59b' }]}>Đã có thẻ</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -305,18 +371,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     lineHeight: 32,
   },
-  listenButton: {
-    marginTop: 10,
-    backgroundColor: primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  listenText: { color: '#fff', fontWeight: '800' },
   sectionLabel: {
     marginTop: 18,
     color: '#ff6b6b',
@@ -349,28 +403,87 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 14,
   },
-  errorContainer: {
+
+  // --- STYLES CHO EMPTY STATE (MỚI) ---
+  headerRowPadding: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  backButtonCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
+    paddingHorizontal: 32,
+    marginTop: -40, // Đẩy lên một chút để cân đối
   },
-  errorText: {
-    color: textLight,
-    marginTop: 16,
-    fontSize: 16,
+  radarContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 30,
+    position: 'relative',
+  },
+  radarCircle: {
+    position: 'absolute',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: primary,
+    backgroundColor: 'transparent',
+  },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(209, 31, 47, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: primary,
+    shadowColor: primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+  },
+  emptyTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 12,
     textAlign: 'center',
   },
-  retryButton: {
-    marginTop: 24,
-    backgroundColor: primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+  emptyDesc: {
+    color: textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 40,
   },
-  retryText: {
+  goHomeBtn: {
+    width: '100%',
+    shadowColor: primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  goHomeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 30,
+    gap: 10,
+  },
+  goHomeText: {
     color: '#fff',
-    fontWeight: '800',
     fontSize: 16,
+    fontWeight: 'bold',
   },
 });

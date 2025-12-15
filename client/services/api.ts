@@ -2,7 +2,8 @@
  * API Service - Giao tiếp với Node.js Backend
  */
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000/api';
+// Ưu tiên ENV; mặc định về port 5000 cho khớp backend (index.ts chạy 5000)
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export interface AICouncilMember {
   name: string;
@@ -52,6 +53,29 @@ export interface UserPassport {
   }[];
   unlocked_provinces: string[];
   current_rank: string;
+  avatar?: string;
+  progress?: {
+    current: number;
+    next_rank: { name: string; target: number };
+  };
+  recent_foods?: {
+    id: string;
+    name: string;
+    location: string;
+    province_name: string;
+    image: string;
+    tag?: string;
+  }[];
+}
+
+export interface UserInfo {
+  id: string;
+  username: string;
+  email: string;
+  current_rank: string;
+  avatar?: string;
+  unlocked_provinces?: string[];
+  food_passport_count?: number;
 }
 
 export interface RecentFood {
@@ -61,6 +85,16 @@ export interface RecentFood {
   province_name: string;
   image: string;
   tag?: string;
+}
+
+export interface CommunityActivity {
+  user_id: string;
+  username: string;
+  avatar?: string;
+  food_id: string;
+  food_name: string;
+  province_name: string;
+  checkin_date: string;
 }
 
 class ApiService {
@@ -288,6 +322,50 @@ class ApiService {
         state,
       };
     });
+  }
+
+  /**
+   * Cập nhật avatar URL cho user (upload file, backend sẽ lưu và trả URL public)
+   */
+  async updateAvatar(userId: string, imageUri: string): Promise<UserInfo> {
+    const formData = new FormData();
+    const filename = imageUri.split('/').pop() || 'avatar.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+    formData.append('file', {
+      uri: imageUri,
+      name: filename,
+      type,
+    } as any);
+
+    const res = await fetch(`${this.baseUrl}/users/${userId}/avatar`, {
+      method: 'PUT',
+      body: formData as any,
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Failed to update avatar: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    return data.user as UserInfo;
+  }
+
+  /**
+   * Lấy các hoạt động check-in mới nhất của cộng đồng
+   */
+  async getRecentActivities(): Promise<CommunityActivity[]> {
+    const res = await fetch(`${this.baseUrl}/users/recent-activities`);
+    if (!res.ok) {
+      throw new Error(`Failed to get recent activities: ${res.statusText}`);
+    }
+    const data = await res.json();
+    return data.activities as CommunityActivity[];
   }
 }
 

@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#332020',
+    backgroundColor: primary,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',

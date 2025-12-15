@@ -21,28 +21,52 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
   const mapRef = useRef<MapView>(null);
   const [provinces, setProvinces] = useState<ProvinceFeature[]>([]);
 
-  // Load GeoJSON data khi component mount - với loading state
+  // Load GeoJSON data khi component mount
+  // Dữ liệu đã được preload khi app khởi động, nên sẽ load rất nhanh
   useEffect(() => {
     let isMounted = true;
 
-    // Delay loading để không block initial render
     const loadData = async () => {
       try {
+        // Nếu đã preload, sẽ trả về ngay từ cache
         const data = await loadProvincesGeoJSON();
         if (isMounted) {
           setProvinces(data);
+          // Log để verify data đã load đúng
+          const hcm = data.find((p) => p.name.includes('Hồ Chí Minh'));
+          if (hcm) {
+            console.log(
+              `✅ Loaded Ho Chi Minh City: "${hcm.name}" - Center: ${JSON.stringify(hcm.center)}`,
+            );
+            // Verify coordinates
+            if (hcm.coordinates && hcm.coordinates[0]) {
+              const firstPoly = hcm.coordinates[0];
+              const firstCoord = firstPoly[0];
+              const lastCoord = firstPoly[firstPoly.length - 1];
+              console.log(
+                `   First coord: lat=${firstCoord.latitude.toFixed(
+                  6,
+                )}, lng=${firstCoord.longitude.toFixed(6)}`,
+              );
+              console.log(
+                `   Last coord: lat=${lastCoord.latitude.toFixed(
+                  6,
+                )}, lng=${lastCoord.longitude.toFixed(6)}`,
+              );
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to load provinces:', error);
       }
     };
 
-    // Load sau một chút để UI render trước
-    const timer = setTimeout(loadData, 100);
+    // Load ngay lập tức vì dữ liệu đã được preload
+    // Nếu preload chưa xong, sẽ đợi promise hiện tại
+    loadData();
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
     };
   }, []);
 
