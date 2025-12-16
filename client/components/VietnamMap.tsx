@@ -1,15 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polygon, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import type { ThemeColors } from '../context/ThemeContext';
+import { useTheme } from '../hooks/use-theme';
 import {
   loadProvincesGeoJSON,
   normalizeProvinceName,
   ProvinceFeature,
 } from '../utils/geojsonLoader';
-
-const primary = '#d11f2f';
-const bg = '#1b0f0f';
 
 interface VietnamMapProps {
   unlockedProvinces: string[]; // Danh sách tên tỉnh đã unlock (ví dụ: ["Hà Nội", "Hồ Chí Minh"])
@@ -17,6 +16,8 @@ interface VietnamMapProps {
 }
 
 export default function VietnamMap({ unlockedProvinces, onProvincePress }: VietnamMapProps) {
+  const { colors, mode } = useTheme();
+  const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
   const [provinces, setProvinces] = useState<ProvinceFeature[]>([]);
@@ -142,9 +143,8 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
     longitudeDelta: 10,
   };
 
-  // Custom map style: Dark theme + chỉ highlight Việt Nam, ẩn/làm tối các nước khác
-  // Điều chỉnh để map sáng hơn một chút nhưng vẫn giữ dark theme
-  const customMapStyle = [
+  // Custom map style: switch theo theme (dark/light)
+  const darkMapStyle = [
     // Background chung - màu tối nhưng sáng hơn
     {
       elementType: 'geometry',
@@ -263,6 +263,77 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
     },
   ];
 
+  const lightMapStyle = [
+    { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
+    { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+    {
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#616161' }],
+    },
+    {
+      elementType: 'labels.text.stroke',
+      stylers: [{ color: '#f5f5f5' }],
+    },
+    { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+    {
+      featureType: 'administrative.locality',
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#757575' }],
+    },
+    { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+    {
+      featureType: 'poi.park',
+      elementType: 'geometry',
+      stylers: [{ color: '#e5e5e5' }],
+    },
+    {
+      featureType: 'poi.park',
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#9e9e9e' }],
+    },
+    {
+      featureType: 'road',
+      elementType: 'geometry',
+      stylers: [{ color: '#ffffff' }],
+    },
+    {
+      featureType: 'road.arterial',
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#757575' }],
+    },
+    {
+      featureType: 'road.highway',
+      elementType: 'geometry',
+      stylers: [{ color: '#dadada' }],
+    },
+    {
+      featureType: 'road.highway',
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#616161' }],
+    },
+    {
+      featureType: 'road.local',
+      elementType: 'labels',
+      stylers: [{ visibility: 'off' }],
+    },
+    {
+      featureType: 'transit',
+      stylers: [{ visibility: 'off' }],
+    },
+    {
+      featureType: 'water',
+      elementType: 'geometry',
+      stylers: [{ color: '#c9c9c9' }],
+    },
+    {
+      featureType: 'water',
+      elementType: 'labels.text.fill',
+      stylers: [{ color: '#9e9e9e' }],
+    },
+  ];
+
+  const customMapStyle = mode === 'light' ? lightMapStyle : darkMapStyle;
+
   // Hàm để giữ map trong phạm vi Việt Nam (tùy chọn - có thể bỏ qua để user tự do zoom)
   const handleRegionChangeComplete = (region: Region, details?: any) => {
     // Có thể thêm logic để tự động điều chỉnh nếu map bị kéo quá xa
@@ -302,14 +373,22 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
               coordinates={coords}
               fillColor={
                 unlocked
-                  ? 'rgba(100, 70, 60, 0.25)' // Unlock: màu nâu sáng (làm sáng tỉnh)
+                  ? mode === 'light'
+                    ? 'rgba(209,31,47,0.18)'
+                    : 'rgba(100, 70, 60, 0.25)'
+                  : mode === 'light'
+                  ? 'rgba(0,0,0,0.08)'
                   : 'rgba(20, 15, 15, 0.5)'
-              } // Lock: màu đen mờ (làm tối tỉnh)
+              }
               strokeColor={
                 unlocked
-                  ? 'rgba(209, 31, 47, 0.6)' // Border đỏ sáng cho tỉnh unlock
+                  ? mode === 'light'
+                    ? 'rgba(209,31,47,0.6)'
+                    : 'rgba(209, 31, 47, 0.6)'
+                  : mode === 'light'
+                  ? '#d0d0d0'
                   : 'rgba(50, 40, 40, 0.3)'
-              } // Border mờ cho tỉnh lock
+              }
               strokeWidth={unlocked ? 2 : 1}
               tappable={true}
               onPress={() => onProvincePress?.(province.name)}
@@ -340,7 +419,7 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
                   collapsable={false}
                 />
                 <View style={styles.markerUnlocked} collapsable={false}>
-                  <Ionicons name="restaurant" size={14} color={primary} />
+                  <Ionicons name="restaurant" size={14} color={colors.primary} />
                 </View>
               </View>
             </Marker>
@@ -355,61 +434,62 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: bg,
-  },
-  map: {
-    width: '100%',
-    height: '100%',
-  },
-  markerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 48, // Giảm thêm xuống 48
-    height: 48, // Giảm thêm xuống 48
-    overflow: 'visible', // Cho phép hiệu ứng vượt ra ngoài
-  },
-  pulseCircle: {
-    position: 'absolute',
-    width: 36, // Giảm xuống 36 (khi scale 1.15 = 41.4px, vẫn trong 48px)
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(209,31,47,0.25)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(209,31,47,0.5)',
-  },
-  markerUnlocked: {
-    width: 28, // Giảm xuống 28
-    height: 28, // Giảm xuống 28
-    borderRadius: 14,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: primary,
-    shadowColor: primary,
-    shadowOpacity: 0.6,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 5,
-  },
-  markerLocked: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#4a3a3a',
-    opacity: 0.6,
-  },
-  darkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(27, 15, 15, 0.15)', // Giảm độ tối từ 0.3 xuống 0.15
-    pointerEvents: 'none',
-  },
-});
+const createStyles = (c: ThemeColors, mode: 'light' | 'dark') =>
+  StyleSheet.create({
+    container: {
+      width: '100%',
+      height: '100%',
+      backgroundColor: c.bg,
+    },
+    map: {
+      width: '100%',
+      height: '100%',
+    },
+    markerContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 48,
+      height: 48,
+      overflow: 'visible',
+    },
+    pulseCircle: {
+      position: 'absolute',
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: 'rgba(209,31,47,0.25)',
+      borderWidth: 1.5,
+      borderColor: 'rgba(209,31,47,0.5)',
+    },
+    markerUnlocked: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: '#fff',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: c.primary,
+      shadowColor: c.primary,
+      shadowOpacity: 0.6,
+      shadowRadius: 5,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 5,
+    },
+    markerLocked: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: mode === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.7)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: mode === 'light' ? '#ddd' : '#4a3a3a',
+      opacity: 0.6,
+    },
+    darkOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: mode === 'light' ? 'rgba(255,255,255,0.05)' : 'rgba(27, 15, 15, 0.15)',
+      pointerEvents: 'none',
+    },
+  });

@@ -97,6 +97,14 @@ export interface CommunityActivity {
   checkin_date: string;
 }
 
+export interface LeaderboardUser {
+  id: string;
+  username: string;
+  avatar?: string;
+  current_rank: string;
+  food_count: number;
+}
+
 class ApiService {
   private baseUrl: string;
 
@@ -366,6 +374,18 @@ class ApiService {
     }
     const data = await res.json();
     return data.activities as CommunityActivity[];
+  }
+
+  /**
+   * Lấy bảng xếp hạng top user theo số món đã check-in
+   */
+  async getLeaderboard(): Promise<LeaderboardUser[]> {
+    const res = await fetch(`${this.baseUrl}/users/leaderboard`);
+    if (!res.ok) {
+      throw new Error(`Failed to get leaderboard: ${res.statusText}`);
+    }
+    const data = await res.json();
+    return data.users as LeaderboardUser[];
   }
 }
 

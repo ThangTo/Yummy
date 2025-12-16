@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Image,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,14 +13,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { ThemeColors } from '../context/ThemeContext';
+import { useTheme } from '../hooks/use-theme';
 // Đảm bảo đường dẫn import này đúng với cấu trúc dự án của bạn
 import { apiService, type ScanResponse } from '../services/api';
-
-const bg = '#1b0f0f';
-const card = '#261515';
-const textLight = '#f8f2f2';
-const textMuted = '#c5b8b8';
-const primary = '#d11f2f';
 
 const stateColor = {
   ok: '#d11f2f',
@@ -30,10 +27,13 @@ const stateColor = {
 export default function AICouncilScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ scanResult?: string; imageUri?: string }>();
+  const { colors, mode } = useTheme();
+  const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
 
   const [scanData, setScanData] = useState<ScanResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Animation refs
   const scanLineAnim = useRef(new Animated.Value(0)).current;
@@ -80,6 +80,22 @@ export default function AICouncilScreen() {
       }, 100);
     }
   }, [params.imageUri]); // Dependency: Chỉ chạy lại khi params.imageUri thay đổi thực sự
+
+  const handleRefresh = useCallback(async () => {
+    const uri = params.imageUri;
+    if (!uri) {
+      return;
+    }
+    try {
+      setRefreshing(true);
+      // Cho phép scan lại khi kéo refresh
+      await performScan(uri);
+    } catch (err) {
+      console.error('AI Council refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [params.imageUri]);
 
   // Hiệu ứng Animation khi đang scan
   useEffect(() => {
@@ -158,11 +174,21 @@ export default function AICouncilScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} style={styles.container}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 32 }}
+        style={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={goBack}>
-            <Ionicons name="chevron-back" size={22} color={textLight} />
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Hội đồng AI</Text>
           <View style={{ width: 22 }} />
@@ -210,7 +236,7 @@ export default function AICouncilScreen() {
             </>
           ) : (
             <View style={styles.heroPlaceholder}>
-              <Ionicons name="image-outline" size={48} color={textMuted} />
+              <Ionicons name="image-outline" size={48} color={colors.textMuted} />
               <Text style={styles.placeholderText}>Chưa có ảnh</Text>
             </View>
           )}
@@ -220,7 +246,7 @@ export default function AICouncilScreen() {
         {(isLoading || isScanning) && (
           <>
             <View style={styles.debateTag}>
-              <ActivityIndicator size="small" color={primary} />
+              <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.debateText}>ĐANG QUÉT ẢNH</Text>
             </View>
             <Text style={styles.headline}>Đang quét và phân tích món ăn...</Text>
@@ -228,7 +254,7 @@ export default function AICouncilScreen() {
               Nhiều mô hình AI đang phân tích hình ảnh của bạn để tìm ra kết quả chính xác nhất.
             </Text>
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={primary} />
+              <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>Vui lòng đợi...</Text>
             </View>
           </>
@@ -253,7 +279,7 @@ export default function AICouncilScreen() {
         {!isLoading && !hasData && !isScanning && (
           <>
             <View style={styles.debateTag}>
-              <Ionicons name="alert-circle-outline" size={14} color={textMuted} />
+              <Ionicons name="alert-circle-outline" size={14} color={colors.textMuted} />
               <Text style={styles.debateText}>CHƯA CÓ DỮ LIỆU</Text>
             </View>
             <Text style={styles.headline}>Chưa có kết quả phân tích</Text>
@@ -280,7 +306,7 @@ export default function AICouncilScreen() {
               <View key={item.name} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View style={[styles.iconCircle, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-                    <Ionicons name="aperture" size={18} color={textLight} />
+                    <Ionicons name="aperture" size={18} color={colors.text} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{item.name}</Text>
@@ -320,8 +346,11 @@ export default function AICouncilScreen() {
                 </View>
               </View>
               <View style={styles.finalActions}>
-                <TouchableOpacity style={styles.retake} onPress={handleRetake}>
-                  <Text style={styles.retakeText}>Thử lại</Text>
+                <TouchableOpacity
+                  style={[styles.retake, { backgroundColor: '#cccccc' }]}
+                  onPress={handleRetake}
+                >
+                  <Text style={[styles.retakeText, { color: '#000' }]}>Thử lại</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.recipe} onPress={handleViewRecipe}>
                   <Text style={styles.recipeText}>Xem chi tiết</Text>
@@ -335,7 +364,7 @@ export default function AICouncilScreen() {
         {!isLoading && !hasData && !isScanning && (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconContainer}>
-              <Ionicons name="image-outline" size={64} color={textMuted} />
+              <Ionicons name="image-outline" size={64} color={colors.textMuted} />
             </View>
             <Text style={styles.emptyTitle}>
               {hasImage ? 'Không thể phân tích ảnh' : 'Chưa có ảnh được cung cấp'}
@@ -349,10 +378,12 @@ export default function AICouncilScreen() {
               <Ionicons
                 name="camera-outline"
                 size={18}
-                color={textLight}
+                color="#f8f2f2"
                 style={{ marginRight: 8 }}
               />
-              <Text style={styles.retakeText}>{hasImage ? 'Thử lại' : 'Chụp ảnh'}</Text>
+              <Text style={[styles.retakeText, { color: '#f8f2f2' }]}>
+                {hasImage ? 'Thử lại' : 'Chụp ảnh'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -361,204 +392,205 @@ export default function AICouncilScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, paddingHorizontal: 18 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-  },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  hero: {
-    alignSelf: 'center',
-    width: 200,
-    height: 200,
-    borderRadius: 110,
-    backgroundColor: '#120909',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-    position: 'relative',
-  },
-  heroImage: { width: 170, height: 170, borderRadius: 85 },
-  scanLine: {
-    position: 'absolute',
-    width: '80%',
-    height: 4,
-    backgroundColor: primary,
-    top: '50%',
-    shadowColor: primary,
-    shadowOpacity: 0.8,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
-  glowOverlay: {
-    position: 'absolute',
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: primary,
-    opacity: 0.3,
-  },
-  debateTag: {
-    marginTop: 16,
-    alignSelf: 'center',
-    backgroundColor: '#2b1717',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: primary },
-  debateText: { color: textLight, fontWeight: '700' },
-  headline: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  subHeadline: {
-    color: textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  sectionRow: {
-    marginTop: 18,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  sectionLabel: { color: textMuted, fontWeight: '600' },
-  card: {
-    marginTop: 12,
-    backgroundColor: card,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
-  },
-  cardHeader: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardTitle: { color: textLight, fontWeight: '800' },
-  cardQuote: { color: textMuted, fontSize: 12, marginTop: 2 },
-  score: { fontWeight: '800', fontSize: 16 },
-  resultRow: { flexDirection: 'row', marginTop: 10, gap: 8, alignItems: 'center' },
-  resultLabel: { color: textMuted, fontWeight: '600' },
-  resultText: { color: textLight, fontWeight: '800' },
-  finalCard: {
-    marginTop: 16,
-    backgroundColor: card,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2d1b1b',
-  },
-  finalLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  finalCheck: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  finalLabel: { color: textMuted, fontSize: 12 },
-  finalTitle: { color: textLight, fontSize: 20, fontWeight: '800' },
-  finalConf: { color: textMuted, marginTop: 4 },
-  finalActions: {
-    flexDirection: 'row',
-    marginTop: 14,
-    gap: 12,
-  },
-  retake: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: primary,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  retakeText: { color: textLight, fontWeight: '700' },
-  recipe: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: primary,
-    alignItems: 'center',
-  },
-  recipeText: { color: '#fff', fontWeight: '800' },
-  heroPlaceholder: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: '#1a0f0f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#2d1b1b',
-    borderStyle: 'dashed',
-  },
-  placeholderText: {
-    color: textMuted,
-    fontSize: 12,
-    marginTop: 8,
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    marginTop: 32,
-    alignItems: 'center',
-    padding: 32,
-  },
-  loadingText: {
-    color: textMuted,
-    marginTop: 16,
-    fontSize: 14,
-  },
-  emptyContainer: {
-    marginTop: 32,
-    alignItems: 'center',
-    padding: 24,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#1a0f0f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: '#2d1b1b',
-  },
-  emptyTitle: {
-    color: textLight,
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyDescription: {
-    color: textMuted,
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-    paddingHorizontal: 20,
-  },
-});
+const createStyles = (c: ThemeColors, mode: 'light' | 'dark') =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    container: { flex: 1, paddingHorizontal: 18 },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+    },
+    headerTitle: { color: c.text, fontSize: 18, fontWeight: '800' },
+    hero: {
+      alignSelf: 'center',
+      width: 200,
+      height: 200,
+      borderRadius: 110,
+      backgroundColor: mode === 'light' ? '#f5e6e6' : '#120909',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 6,
+      position: 'relative',
+    },
+    heroImage: { width: 170, height: 170, borderRadius: 85 },
+    scanLine: {
+      position: 'absolute',
+      width: '80%',
+      height: 4,
+      backgroundColor: c.primary,
+      top: '50%',
+      shadowColor: c.primary,
+      shadowOpacity: 0.8,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 8,
+    },
+    glowOverlay: {
+      position: 'absolute',
+      width: 170,
+      height: 170,
+      borderRadius: 85,
+      backgroundColor: c.primary,
+      opacity: 0.3,
+    },
+    debateTag: {
+      marginTop: 16,
+      alignSelf: 'center',
+      backgroundColor: mode === 'light' ? '#f7e9e9' : '#2b1717',
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary },
+    debateText: { color: c.text, fontWeight: '700' },
+    headline: {
+      color: c.text,
+      fontSize: 20,
+      fontWeight: '800',
+      marginTop: 12,
+      textAlign: 'center',
+    },
+    subHeadline: {
+      color: c.textMuted,
+      textAlign: 'center',
+      marginTop: 6,
+      lineHeight: 20,
+    },
+    sectionRow: {
+      marginTop: 18,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    sectionTitle: { color: c.text, fontSize: 16, fontWeight: '800' },
+    sectionLabel: { color: c.textMuted, fontWeight: '600' },
+    card: {
+      marginTop: 12,
+      backgroundColor: c.card,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: '#2d1b1b',
+    },
+    cardHeader: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+    iconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardTitle: { color: c.text, fontWeight: '800' },
+    cardQuote: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    score: { fontWeight: '800', fontSize: 16 },
+    resultRow: { flexDirection: 'row', marginTop: 10, gap: 8, alignItems: 'center' },
+    resultLabel: { color: c.textMuted, fontWeight: '600' },
+    resultText: { color: c.text, fontWeight: '800' },
+    finalCard: {
+      marginTop: 16,
+      backgroundColor: c.card,
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: mode === 'light' ? '#f1dede' : '#2d1b1b',
+    },
+    finalLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    finalCheck: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    finalLabel: { color: c.textMuted, fontSize: 12 },
+    finalTitle: { color: c.text, fontSize: 20, fontWeight: '800' },
+    finalConf: { color: c.textMuted, marginTop: 4 },
+    finalActions: {
+      flexDirection: 'row',
+      marginTop: 14,
+      gap: 12,
+    },
+    retake: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+    },
+    retakeText: { color: c.text, fontWeight: '700' },
+    recipe: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+    },
+    recipeText: { color: '#fff', fontWeight: '800' },
+    heroPlaceholder: {
+      width: 170,
+      height: 170,
+      borderRadius: 85,
+      backgroundColor: mode === 'light' ? '#f5e6e6' : '#1a0f0f',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: '#2d1b1b',
+      borderStyle: 'dashed',
+    },
+    placeholderText: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginTop: 8,
+      fontWeight: '600',
+    },
+    loadingContainer: {
+      marginTop: 32,
+      alignItems: 'center',
+      padding: 32,
+    },
+    loadingText: {
+      color: c.textMuted,
+      marginTop: 16,
+      fontSize: 14,
+    },
+    emptyContainer: {
+      marginTop: 32,
+      alignItems: 'center',
+      padding: 24,
+    },
+    emptyIconContainer: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: mode === 'light' ? '#f5e6e6' : '#1a0f0f',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+      borderWidth: 2,
+      borderColor: '#2d1b1b',
+    },
+    emptyTitle: {
+      color: c.text,
+      fontSize: 18,
+      fontWeight: '800',
+      marginBottom: 8,
+      textAlign: 'center',
+    },
+    emptyDescription: {
+      color: c.textMuted,
+      fontSize: 14,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 24,
+      paddingHorizontal: 20,
+    },
+  });
