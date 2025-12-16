@@ -1,6 +1,6 @@
 """
 AI Service - FastAPI Microservice
-Xử lý ảnh món ăn bằng 3 models song song (InceptionV3, ResNet152V2, VGG19)
+Xử lý ảnh món ăn bằng nhiều models song song
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -39,18 +39,33 @@ image_processor = ImageProcessor()
 @app.on_event("startup")
 async def load_models():
     """
-    Load tất cả 3 models vào RAM khi server khởi động.
+    Load tất cả models vào RAM khi server khởi động.
     Đây là kỹ thuật tối ưu Performance quan trọng nhất - loại bỏ Cold Start.
     """
-    print("🚀 System: Đang nạp 3 Models vào bộ nhớ...")
+    print("🚀 System: Đang nạp Models vào bộ nhớ...")
     try:
         await model_service.load_all_models()
-        print(f"✅ System: Đã load {len(model_service.models)} models. Sẵn sàng phục vụ!")
-    except Exception as e:
-        print(f"❌ Error loading models: {e}")
+        loaded_models = len(model_service.models)
+        print(f"✅ System: Đã load {loaded_models} models. Sẵn sàng phục vụ!")
+        
+        # Log danh sách models đã load thành công
+        if loaded_models > 0:
+            print(f"📋 Available models: {', '.join(model_service.models.keys())}")
+        else:
+            print("⚠️  Warning: No models loaded! Server may not function correctly.")
+    except RuntimeError as e:
+        # RuntimeError được raise khi không có model nào load được
+        print(f"❌ Critical: {e}")
+        print("⚠️  Server will start but prediction endpoints may not work.")
         import traceback
         traceback.print_exc()
-        raise
+        # Không raise để server vẫn có thể start (để check health endpoint)
+    except Exception as e:
+        print(f"❌ Unexpected error loading models: {e}")
+        import traceback
+        traceback.print_exc()
+        # Không raise để server vẫn có thể start
+        print("⚠️  Server will start but some models may not be available.")
 
 
 @app.get("/")
@@ -75,7 +90,7 @@ async def health_check():
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     """
-    Nhận ảnh món ăn và chạy 3 models song song để dự đoán.
+    Nhận ảnh món ăn và chạy tất cả models song song để dự đoán.
     
     Args:
         file: Ảnh món ăn (multipart/form-data)
@@ -88,6 +103,8 @@ async def predict(file: UploadFile = File(...)):
                 "inception_v3": {"prediction": "Pho", "confidence": 0.95},
                 "resnet152_v2": {"prediction": "Pho", "confidence": 0.92},
                 "vgg19": {"prediction": "Pho", "confidence": 0.88},
+                "inception_resnet_v2": {"prediction": "Pho", "confidence": 0.96},
+                "xception": {"prediction": "Pho", "confidence": 0.94},
             },
             "voting_result": {...}
         }
@@ -132,11 +149,18 @@ async def predict(file: UploadFile = File(...)):
                 detail=f"Invalid image format: {str(e)}"
             )
         
-        # 2. Đảm bảo prediction_service có class names
+        # 2. Kiểm tra có models không
+        if not model_service.models or len(model_service.models) == 0:
+            raise HTTPException(
+                status_code=503,
+                detail="No models available. Please check server logs for model loading errors."
+            )
+        
+        # 3. Đảm bảo prediction_service có class names
         if not prediction_service.class_names and model_service.class_names:
             prediction_service.set_class_names(model_service.class_names)
         
-        # 3. Chạy 3 models song song (parallel inference)
+        # 4. Chạy tất cả models song song (parallel inference)
         # Image sẽ được preprocess riêng cho từng model trong prediction_service
         predictions = await prediction_service.predict_all_models(
             image,  # Truyền PIL Image gốc
@@ -144,10 +168,10 @@ async def predict(file: UploadFile = File(...)):
             image_processor
         )
         
-        # 4. Voting mechanism để chọn kết quả cuối cùng
+        # 5. Voting mechanism để chọn kết quả cuối cùng
         voting_result = prediction_service.vote(predictions)
         
-        # 5. Format response để match với backend expectation
+        # 6. Format response để match với backend expectation
         model_details_formatted = {}
         for model_name, result in predictions.items():
             model_details_formatted[model_name] = {

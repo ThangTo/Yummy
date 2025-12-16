@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polygon, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import type { ThemeColors } from '../context/ThemeContext';
 import { useTheme } from '../hooks/use-theme';
@@ -136,11 +136,18 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
   };
 
   // Tọa độ trung tâm Việt Nam - zoom để hiển thị toàn bộ đất nước
-  const vietnamCenter = {
-    latitude: 16.0583,
-    longitude: 108.2772,
-    latitudeDelta: 12,
-    longitudeDelta: 10,
+  const vietnamCenter: Region = {
+    latitude: 16.047079,
+    longitude: 108.20623,
+    latitudeDelta: 16.0,
+    longitudeDelta: 8.5,
+  };
+
+  // Handler để reset map về tọa độ ban đầu của Việt Nam
+  const handleResetToVietnam = () => {
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(vietnamCenter, 1000); // 1 giây animation
+    }
   };
 
   // Custom map style: switch theo theme (dark/light)
@@ -426,6 +433,15 @@ export default function VietnamMap({ unlockedProvinces, onProvincePress }: Vietn
           ))}
       </MapView>
 
+      {/* Nút reset về tọa độ Việt Nam - góc trên bên phải */}
+      <TouchableOpacity
+        style={styles.resetButton}
+        onPress={handleResetToVietnam}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="locate" size={20} color={colors.primary} />
+      </TouchableOpacity>
+
       {/* Overlay tối màu - giảm độ tối để map sáng hơn */}
       {/* Chỉ hiển thị overlay nếu customMapStyle chưa hoạt động đầy đủ */}
       {/* Tạm thời comment để map sáng hơn */}
@@ -491,5 +507,23 @@ const createStyles = (c: ThemeColors, mode: 'light' | 'dark') =>
       ...StyleSheet.absoluteFillObject,
       backgroundColor: mode === 'light' ? 'rgba(255,255,255,0.05)' : 'rgba(27, 15, 15, 0.15)',
       pointerEvents: 'none',
+    },
+    resetButton: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: mode === 'light' ? '#ffffff' : c.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      borderWidth: 1,
+      borderColor: mode === 'light' ? '#e5e5e5' : 'rgba(255,255,255,0.1)',
     },
   });

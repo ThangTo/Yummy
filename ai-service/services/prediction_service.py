@@ -14,7 +14,7 @@ from PIL import Image
 class PredictionService:
     """Service để xử lý predictions và voting"""
     
-    def __init__(self, max_workers: int = 3):
+    def __init__(self, max_workers: int = 5):
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.class_names = []  # Sẽ được set từ model_service
     
@@ -31,8 +31,8 @@ class PredictionService:
         # Tạo tasks cho tất cả models
         tasks = []
         for model_name, model in models.items():
-            # InceptionV3 cần kích thước 299x299
-            if model_name == "inception_v3":
+            # Một số kiến trúc Inception/Xception cần kích thước 299x299
+            if model_name in {"inception_v3", "inception_resnet_v2", "xception"}:
                 img = image_processor.preprocess_for_inception(original_image)
             else:
                 img = image_processor.preprocess(original_image)

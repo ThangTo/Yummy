@@ -31,6 +31,7 @@ export default function HomeScreen() {
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [displayedActivitiesCount, setDisplayedActivitiesCount] = useState(10);
 
   const fetchFoods = useCallback(async () => {
     try {
@@ -69,12 +70,26 @@ export default function HomeScreen() {
     try {
       setRefreshing(true);
       await Promise.all([fetchFoods(), fetchActivities(), refreshPassport()]);
+      // Reset về 10 items khi refresh
+      setDisplayedActivitiesCount(10);
     } catch (error) {
       console.error('Home refresh error:', error);
     } finally {
       setRefreshing(false);
     }
   }, [fetchFoods, fetchActivities, refreshPassport]);
+
+  // Tính toán activities đang hiển thị
+  const displayedActivities = useMemo(() => {
+    return activities.slice(0, displayedActivitiesCount);
+  }, [activities, displayedActivitiesCount]);
+
+  // Kiểm tra có còn activities để load không
+  const hasMoreActivities = activities.length > displayedActivitiesCount;
+
+  const handleLoadMore = useCallback(() => {
+    setDisplayedActivitiesCount((prev) => prev + 10);
+  }, []);
 
   const greetingName = isLoggedIn && user?.username ? user.username : 'bạn';
 
@@ -284,7 +299,7 @@ export default function HomeScreen() {
 
         {!isLoadingActivities &&
           !activitiesError &&
-          activities.map((item, index) => (
+          displayedActivities.map((item, index) => (
             <View key={`${item.user_id}-${index}`} style={styles.feedCardItem}>
               <View style={styles.feedHeader}>
                 <Image
@@ -305,6 +320,18 @@ export default function HomeScreen() {
               </View>
             </View>
           ))}
+
+        {/* Nút Xem thêm */}
+        {!isLoadingActivities && !activitiesError && hasMoreActivities && (
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={handleLoadMore}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.loadMoreText}>Xem thêm</Text>
+            <Ionicons name="chevron-down" size={16} color={colors.primary} />
+          </TouchableOpacity>
+        )}
 
         {/* CHECK-IN CARD */}
         <View style={styles.checkinCard}>
@@ -548,6 +575,25 @@ const createStyles = (c: ThemeColors, mode: 'light' | 'dark') =>
     feedDesc: {
       color: c.textMuted,
       fontSize: 13,
+    },
+    loadMoreButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.card,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      marginTop: 8,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: mode === 'light' ? '#e5e5e5' : 'rgba(255,255,255,0.1)',
+      gap: 6,
+    },
+    loadMoreText: {
+      color: c.primary,
+      fontSize: 14,
+      fontWeight: '600',
     },
     checkinCard: {
       marginTop: 18,
