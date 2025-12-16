@@ -53,3 +53,5 @@ coverage/
 .cache/
 .temp/
 .tmp/
+
+uploads/

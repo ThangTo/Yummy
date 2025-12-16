@@ -147,4 +147,18 @@ export const UserController = {
       res.status(500).json({ error: 'Failed to fetch recent activities' });
     }
   },
+
+  /**
+   * GET /api/users/leaderboard
+   * Lấy bảng xếp hạng top user theo số món ăn đã check-in
+   */
+  getLeaderboard: async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const users = await UserService.getLeaderboard(10);
+      res.json({ users });
+    } catch (err) {
+      console.error('Error in getLeaderboard:', err);
+      res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+  },
 };

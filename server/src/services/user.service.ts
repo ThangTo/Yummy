@@ -37,6 +37,14 @@ export interface RecentActivity {
   checkin_date: string;
 }
 
+export interface LeaderboardUser {
+  id: string;
+  username: string;
+  avatar?: string;
+  current_rank: string;
+  food_count: number;
+}
+
 export interface CheckInData {
   food_id: string;
   image_url?: string;
@@ -214,6 +222,32 @@ export const UserService = {
       food_name: a.food_name || 'Món ăn bí ẩn',
       province_name: a.province_name || '',
       checkin_date: new Date(a.checkin_date).toISOString(),
+    }));
+  },
+
+  /**
+   * Lấy bảng xếp hạng top user theo số món ăn đã check-in
+   */
+  getLeaderboard: async (limit = 10): Promise<LeaderboardUser[]> => {
+    const users = await User.aggregate([
+      {
+        $project: {
+          username: 1,
+          avatar: 1,
+          current_rank: 1,
+          food_count: { $size: '$food_passport' },
+        },
+      },
+      { $sort: { food_count: -1 } },
+      { $limit: limit },
+    ]).exec();
+
+    return users.map((u: any) => ({
+      id: u._id?.toString() || '',
+      username: u.username || 'Người dùng ẩn danh',
+      avatar: u.avatar,
+      current_rank: u.current_rank || 'Khách vãng lai',
+      food_count: u.food_count || 0,
     }));
   },
 };
