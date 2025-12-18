@@ -44,22 +44,22 @@ class ModelService:
                 if model_path.exists():
                     print(f"🔄 Loading {model_name} from {model_path}...")
                     try:
-                        # Load Keras model
-                        model = tf.keras.models.load_model(str(model_path))
-                        self.models[model_name] = model
+                    # Load Keras model
+                    model = tf.keras.models.load_model(str(model_path))
+                    self.models[model_name] = model
                         loaded_count += 1
-                        print(f"✅ Loaded {model_name} successfully")
-                        
-                        # Lấy số classes từ model output shape
-                        if not self.class_names:
-                            output_shape = model.output_shape
-                            if isinstance(output_shape, list):
-                                output_shape = output_shape[0]
-                            if output_shape and len(output_shape) > 1:
-                                num_classes = output_shape[-1]
-                                # Tạo tên classes mặc định nếu chưa có file class_names.json
-                                self.class_names = [f"class_{i}" for i in range(num_classes)]
-                                print(f"⚠️  Using default class names (class_0, class_1, ...)")
+                    print(f"✅ Loaded {model_name} successfully")
+                    
+                    # Lấy số classes từ model output shape
+                    if not self.class_names:
+                        output_shape = model.output_shape
+                        if isinstance(output_shape, list):
+                            output_shape = output_shape[0]
+                        if output_shape and len(output_shape) > 1:
+                            num_classes = output_shape[-1]
+                            # Tạo tên classes mặc định nếu chưa có file class_names.json
+                            self.class_names = [f"class_{i}" for i in range(num_classes)]
+                            print(f"⚠️  Using default class names (class_0, class_1, ...)")
                     except Exception as load_error:
                         failed_count += 1
                         print(f"❌ Error loading {model_name} from {model_path}: {load_error}")

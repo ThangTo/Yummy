@@ -1,0 +1,67 @@
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: yummy-mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+    networks:
+      - yummy-network
+
+  # Node.js Backend
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: yummy-backend
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+    environment:
+      - NODE_ENV=production
+      # MongoDB Atlas URI - đọc từ file .env (KHÔNG hardcode password)
+      - MONGO_URI=${MONGO_URI}
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - AI_SERVICE_URL=http://ai-service:8000
+    volumes:
+      - ./server/uploads:/app/uploads
+    depends_on:
+      - mongodb
+    networks:
+      - yummy-network
+
+  # Python AI Service
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: yummy-ai-service
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./ai-service/models:/app/models:ro
+    networks:
+      - yummy-network
+    # Increase memory limit for TensorFlow models
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+volumes:
+  mongodb_data:
+
+networks:
+  yummy-network:
+    driver: bridge
