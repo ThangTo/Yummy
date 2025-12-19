@@ -55,3 +55,6 @@ coverage/
 .tmp/
 
 uploads/
+
+# AI Models (không commit lên GitHub - sẽ download từ Google Drive khi build)
+ai-service/models/*.keras
