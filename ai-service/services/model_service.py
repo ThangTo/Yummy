@@ -7,6 +7,12 @@ from pathlib import Path
 import tensorflow as tf
 import numpy as np
 import json
+import os
+
+# Configure TensorFlow để tối ưu memory
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+# Disable oneDNN optimizations để giảm memory usage
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 
 class ModelService:
@@ -44,10 +50,20 @@ class ModelService:
                 if model_path.exists():
                     print(f"🔄 Loading {model_name} from {model_path}...")
                     try:
-                        # Load Keras model
-                        model = tf.keras.models.load_model(str(model_path))
+                        # Load Keras model với memory optimization
+                        # Set memory growth để tránh allocate toàn bộ GPU memory
+                        import os
+                        os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+                        
+                        # Load model với compile=False để tiết kiệm memory
+                        model = tf.keras.models.load_model(str(model_path), compile=False)
                         self.models[model_name] = model
                         loaded_count += 1
+                        
+                        # Clear memory sau khi load
+                        import gc
+                        gc.collect()
+                        
                         print(f"✅ Loaded {model_name} successfully")
                         
                         # Lấy số classes từ model output shape
@@ -60,12 +76,22 @@ class ModelService:
                                 # Tạo tên classes mặc định nếu chưa có file class_names.json
                                 self.class_names = [f"class_{i}" for i in range(num_classes)]
                                 print(f"⚠️  Using default class names (class_0, class_1, ...)")
+                    except MemoryError as mem_error:
+                        failed_count += 1
+                        print(f"❌ Out of Memory loading {model_name}: {mem_error}")
+                        print(f"   Model file size: {model_path.stat().st_size / (1024*1024):.2f} MB")
+                        print(f"   ⚠️  Skipping this model due to memory constraints")
+                        import gc
+                        gc.collect()
+                        # Tiếp tục load các model khác
                     except Exception as load_error:
                         failed_count += 1
                         print(f"❌ Error loading {model_name} from {model_path}: {load_error}")
                         print(f"   Error type: {type(load_error).__name__}")
                         import traceback
                         traceback.print_exc()
+                        import gc
+                        gc.collect()
                         # Tiếp tục load các model khác thay vì raise
                 else:
                     failed_count += 1
