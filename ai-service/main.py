@@ -3,6 +3,7 @@ AI Service - FastAPI Microservice
 Xử lý ảnh món ăn bằng nhiều models song song
 """
 
+import asyncio
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -35,14 +36,22 @@ model_service = ModelService()
 prediction_service = PredictionService()
 image_processor = ImageProcessor()
 
+# Flags để track loading status (cho Hugging Face Spaces health check)
+models_loading = False
+models_loaded = False
+models_load_error = None
 
-@app.on_event("startup")
-async def load_models():
+
+async def load_models_background():
     """
-    Load tất cả models vào RAM khi server khởi động.
-    Đây là kỹ thuật tối ưu Performance quan trọng nhất - loại bỏ Cold Start.
+    Load models trong background để không block server startup.
+    Quan trọng cho Hugging Face Spaces - health check phải trả lời ngay.
     """
-    print("🚀 System: Đang nạp Models vào bộ nhớ...")
+    global models_loading, models_loaded, models_load_error
+    models_loading = True
+    models_load_error = None
+    
+    print("🚀 System: Đang nạp Models vào bộ nhớ (background)...")
     try:
         await model_service.load_all_models()
         loaded_models = len(model_service.models)
@@ -53,28 +62,44 @@ async def load_models():
             print(f"📋 Available models: {', '.join(model_service.models.keys())}")
         else:
             print("⚠️  Warning: No models loaded! Server may not function correctly.")
+        models_loaded = True
     except RuntimeError as e:
         # RuntimeError được raise khi không có model nào load được
+        models_load_error = str(e)
         print(f"❌ Critical: {e}")
         print("⚠️  Server will start but prediction endpoints may not work.")
         import traceback
         traceback.print_exc()
-        # Không raise để server vẫn có thể start (để check health endpoint)
     except Exception as e:
+        models_load_error = str(e)
         print(f"❌ Unexpected error loading models: {e}")
         import traceback
         traceback.print_exc()
-        # Không raise để server vẫn có thể start
         print("⚠️  Server will start but some models may not be available.")
+    finally:
+        models_loading = False
+
+
+@app.on_event("startup")
+async def startup():
+    """
+    Start server ngay và load models trong background.
+    Điều này đảm bảo health check trả lời ngay lập tức cho Hugging Face Spaces.
+    """
+    # Start loading models trong background task
+    asyncio.create_task(load_models_background())
+    print("✅ Server started. Models loading in background...")
 
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """Health check endpoint - trả lời ngay cả khi models chưa load"""
     return {
         "status": "running",
         "service": "Yummy AI Service",
-        "models_loaded": model_service.models_loaded(),
+        "models_loading": models_loading,
+        "models_loaded": models_loaded,
+        "models_count": len(model_service.models) if models_loaded else 0,
     }
 
 
@@ -82,8 +107,11 @@ async def root():
 async def health_check():
     """Detailed health check"""
     return {
-        "status": "healthy",
-        "models": model_service.get_models_status(),
+        "status": "healthy" if models_loaded else ("loading" if models_loading else "error"),
+        "models_loading": models_loading,
+        "models_loaded": models_loaded,
+        "models": model_service.get_models_status() if models_loaded else {},
+        "error": models_load_error if models_load_error else None,
     }
 
 
@@ -149,7 +177,20 @@ async def predict(file: UploadFile = File(...)):
                 detail=f"Invalid image format: {str(e)}"
             )
         
-        # 2. Kiểm tra có models không
+        # 2. Kiểm tra models đã load chưa
+        if not models_loaded:
+            if models_loading:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Models are still loading. Please try again in a few minutes."
+                )
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Models failed to load. Error: {models_load_error or 'Unknown error'}. Please check server logs."
+                )
+        
+        # Kiểm tra có models không
         if not model_service.models or len(model_service.models) == 0:
             raise HTTPException(
                 status_code=503,
